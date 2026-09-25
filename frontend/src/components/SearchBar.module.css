@@ -1,0 +1,176 @@
+.wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+}
+
+.form {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.input {
+  flex: 1;
+  /* Without this the input's intrinsic width pushes the row past the viewport. */
+  min-width: 0;
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  height: 48px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.small .input {
+  padding: 0.5rem 0.75rem;
+  font-size: 14px;
+  height: var(--tap);
+}
+
+.input::placeholder {
+  color: var(--mute);
+}
+
+.input:focus {
+  outline: none;
+  border: 2px solid var(--primary);
+  padding: 11px 15px; /* offset the 2px border */
+}
+
+.small .input:focus {
+  padding: calc(0.5rem - 1px) calc(0.75rem - 1px);
+}
+
+.input:disabled {
+  opacity: 0.6;
+}
+
+.button {
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--on-primary);
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--primary);
+  border: none;
+  border-radius: var(--radius-xl);
+  height: 48px;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.small .button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  height: var(--tap);
+}
+
+.button:hover:not(:disabled) {
+  background: var(--primary-active);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  left: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+
+.list {
+  max-height: min(320px, 45vh);
+  margin: 0;
+  padding: 0.25rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.list li {
+  margin: 0;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: calc(var(--radius) - 4px);
+}
+
+.option:hover,
+.active {
+  background: var(--surface-hover);
+}
+
+.optionTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.optionDescription {
+  overflow: hidden;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hint {
+  padding: 0.7rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* Narrow phones: reclaim the button's horizontal padding so the field keeps
+   a usable width next to it, and let long titles wrap in the dropdown. */
+@media (max-width: 480px) {
+  .form {
+    gap: 0.4rem;
+  }
+
+  .button {
+    padding: 12px 16px;
+  }
+
+  .small .button {
+    padding: 0.5rem 0.85rem;
+  }
+
+  .input,
+  .small .input {
+    padding: 12px;
+  }
+
+  .small .input {
+    padding: 0.5rem 0.65rem;
+  }
+
+  .optionDescription {
+    /* Two lines of description instead of an ellipsis cut-off. */
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+

@@ -1,0 +1,154 @@
+.filters {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.filter {
+  min-height: var(--tap);
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.filter:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.filterActive {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.filterActive:hover {
+  color: #fff;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface-hover);
+  border-radius: var(--radius);
+}
+
+.itemTitle {
+  /* Lets long article titles wrap instead of widening the row. */
+  min-width: 0;
+  font-size: 0.95rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+a.itemTitle:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* A missing connection: name, where it was mentioned, and its status. The
+   red wash and left rule are what separate it from an existing connection. */
+.itemMissing {
+  display: flex;
+  gap: 0.4rem 0.9rem;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.8rem;
+  background: var(--missing-soft);
+  border-left: 3px solid var(--missing);
+  border-radius: var(--radius);
+}
+
+.itemMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.source {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.source a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.source a:hover {
+  color: var(--text);
+}
+
+.itemStatus {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.statusNote {
+  font-size: 0.75rem;
+  color: var(--missing);
+  white-space: nowrap;
+}
+
+.direction {
+  font-size: 0.75rem;
+  color: var(--oneway);
+  white-space: nowrap;
+}
+
+.note {
+  padding-top: 0.9rem;
+  margin: 0.9rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+.note code {
+  padding: 0.05rem 0.3rem;
+  font-size: 0.95em;
+  background: var(--surface-hover);
+  border-radius: 4px;
+}
+
+@media (max-width: 560px) {
+  .filters {
+    /* Full-width pills read better than a ragged wrapped block. */
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .direction {
+    flex: 1 1 100%;
+  }
+
+  .itemStatus {
+    /* Name keeps its own line on narrow screens, so the status group drops
+       underneath it instead of squeezing the title. */
+    flex: 1 1 100%;
+  }
+}
+

@@ -1,0 +1,81 @@
+.wrapper {
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.toolbar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.button {
+  min-height: var(--tap);
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+  cursor: pointer;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.button:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.canvas {
+  width: 100%;
+  /* Grows with the viewport on desktop, but never taller than a phone screen. */
+  height: clamp(340px, 60vh, 560px);
+  background: var(--canvas);
+  /* Cytoscape injects absolutely positioned layers; contain their overflow. */
+  overflow: hidden;
+  touch-action: none;
+}
+
+@media (max-width: 720px) {
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .actions .button {
+    flex: 1 1 0;
+  }
+
+  .canvas {
+    height: clamp(300px, 55vh, 480px);
+  }
+}
+
+.note {
+  padding: 0.7rem 1rem;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+.note code {
+  padding: 0.05rem 0.3rem;
+  background: var(--surface-hover);
+  border-radius: 4px;
+}

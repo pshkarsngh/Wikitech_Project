@@ -1,0 +1,20 @@
+.searchRow {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.75rem;
+}
+
+.stats {
+  display: grid;
+  /* min() stops the track from overflowing below ~200px of usable width. */
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 560px) {
+  .searchRow {
+    margin-bottom: 1.25rem;
+  }
+}
+

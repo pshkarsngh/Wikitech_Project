@@ -1,0 +1,280 @@
+.badge {
+  flex: 0 0 auto;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+
+.badge_person {
+  color: var(--person);
+  background: var(--person-soft);
+  border-color: var(--person);
+}
+
+.badge_place {
+  color: var(--place);
+  background: var(--place-soft);
+  border-color: var(--place);
+}
+
+.badge_other {
+  color: var(--muted);
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+
+/* The existence check's own classification of a connection. */
+.state_exists,
+.state_missing {
+  letter-spacing: 0.06em;
+}
+
+.state_exists {
+  color: var(--positive-deep);
+  background: var(--primary-pale);
+  border-color: var(--positive);
+}
+
+.state_missing {
+  color: #fff;
+  background: var(--negative-bg);
+  border-color: var(--negative);
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--muted);
+  border-radius: var(--radius);
+}
+
+.stat_missing {
+  border-left-color: var(--missing);
+}
+
+.stat_oneway {
+  border-left-color: var(--oneway);
+}
+
+.stat_links {
+  border-left-color: var(--mutual);
+}
+
+.statValue {
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.statLabel {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.statHint {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.card {
+  padding: 1.25rem 1.4rem;
+  margin-bottom: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.cardHeader {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.cardHeader > div {
+  min-width: 0;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+/* Marks a section whose subject is a negative result, so it never reads as
+   interchangeable with the neutral lists beside it. */
+.card_missing {
+  border-color: var(--missing);
+  border-left: 3px solid var(--missing);
+}
+
+.card_missing .cardTitle {
+  color: var(--missing);
+}
+
+.cardSubtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+.emptyTitle {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.emptyDescription {
+  max-width: 46ch;
+  margin: 0 auto 1rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.loading {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.spinner {
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+.error {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 1rem 1.2rem;
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+}
+
+.errorTitle {
+  margin: 0;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.errorBody {
+  margin: 0.2rem 0 0;
+  font-size: 0.88rem;
+  color: var(--text-soft);
+}
+
+.retry {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--danger);
+  border: 0;
+  border-radius: var(--radius);
+}
+
+.legend {
+  display: flex;
+  gap: 1rem;
+  padding: 0;
+  margin: 0;
+  flex-wrap: wrap;
+  list-style: none;
+}
+
+.legendItem {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--text-soft);
+}
+
+.swatch {
+  flex: 0 0 auto;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid;
+  border-radius: 50%;
+}
+
+@media (max-width: 720px) {
+  .card {
+    padding: 1rem;
+  }
+
+  /* Title and its action each get a full row so buttons stay tappable. */
+  .cardHeader {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .statCard {
+    padding: 0.85rem 1rem;
+  }
+
+  .empty {
+    padding: 1.5rem 0.85rem;
+  }
+
+  .error {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .retry {
+    width: 100%;
+    min-height: var(--tap);
+  }
+
+  .legend {
+    gap: 0.5rem 0.9rem;
+  }
+}
+

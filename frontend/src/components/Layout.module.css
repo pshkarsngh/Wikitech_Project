@@ -1,0 +1,140 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  /* dvh tracks the mobile browser chrome so the footer stays reachable. */
+  min-height: 100dvh;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.headerInner {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1180px;
+  padding: 0.85rem var(--gutter);
+  margin: 0 auto;
+}
+
+.brand {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brandMark {
+  flex: 0 0 auto;
+  width: 1.6rem;
+  height: 1.6rem;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--mutual) 100%);
+  border-radius: 0.45rem;
+}
+
+.brandText {
+  font-size: 0.98rem;
+  letter-spacing: -0.01em;
+}
+
+.brandText strong {
+  color: var(--accent);
+}
+
+.nav {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.navLink {
+  padding: 0.4rem 0.7rem;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--body);
+  text-decoration: none;
+  border-radius: var(--radius);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.navLink:hover {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+
+.navLinkActive {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 1180px;
+  padding: 2rem var(--gutter) 4rem;
+  margin: 0 auto;
+}
+
+.footer {
+  padding: 1.25rem var(--gutter);
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+.footer p {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* Below desktop the header stacks: brand on top, links on a scrollable row so
+   the nav stays one line instead of wrapping into a ragged block. */
+@media (max-width: 1023px) {
+  .headerInner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+    padding: 0.75rem var(--gutter) 0.4rem;
+  }
+
+  .nav {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    margin: 0 calc(var(--gutter) * -1);
+    padding: 0 var(--gutter);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .navLink {
+    flex: 0 0 auto;
+    min-height: var(--tap);
+    padding: 0.5rem 0.7rem;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .brandText {
+    font-size: 0.9rem;
+  }
+}
