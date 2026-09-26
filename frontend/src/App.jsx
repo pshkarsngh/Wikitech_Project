@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import Layout from './components/Layout'
 import AnalysisPage from './pages/AnalysisPage'
+import EntitiesPage from './pages/EntitiesPage'
 import HomePage from './pages/HomePage'
 import MissingConnectionsPage from './pages/MissingConnectionsPage'
 import NotFoundPage from './pages/NotFoundPage'
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/analyze" element={<AnalysisPage />} />
+          <Route path="/people-and-places" element={<EntitiesPage />} />
           <Route path="/missing-connections" element={<MissingConnectionsPage />} />
           <Route path="/one-way-connections" element={<OneWayConnectionsPage />} />
           <Route path="/connection-map" element={<ConnectionMapPage />} />

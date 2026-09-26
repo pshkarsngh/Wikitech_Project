@@ -134,6 +134,19 @@ class FakeWikipediaClient:
         self.reverse_calls.append(ids)
         return {page_id: {title_key(t) for t in OUTGOING.get(page_id, [])} for page_id in ids}
 
+    async def get_page_descriptions(self, page_ids) -> dict[int, str]:
+        # An article's own short description is what identifies it as a person or
+        # a place, and it comes back a batch at a time.
+        titles = {page_id: title for title, page_id in PAGES.items()}
+        descriptions: dict[int, str] = {}
+        for page_id in page_ids:
+            if not page_id:
+                continue
+            description = WIKIDATA_DESCRIPTIONS.get(titles.get(int(page_id), ""))
+            if description:
+                descriptions[int(page_id)] = description
+        return descriptions
+
     async def wikidata_descriptions(self, term: str) -> str | None:
         return WIKIDATA_DESCRIPTIONS.get(term)
 

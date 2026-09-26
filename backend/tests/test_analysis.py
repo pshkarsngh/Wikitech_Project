@@ -12,6 +12,7 @@ from app.services.analysis import (
     analyze_article,
     build_connection_map,
     build_link_graph,
+    classify_links,
     detect_missing_connections,
     detect_one_way_connections,
 )
@@ -90,6 +91,130 @@ async def test_analyze_article_summary(settings: Settings) -> None:
     absent = [link.title for link in result.links if not link.exists]
     assert existing == {ENGINE, LONDON}
     assert absent == [NOVEL, VILLAGE]
+
+
+async def test_summary_reports_a_truncated_link_set(settings: Settings) -> None:
+    # The article links to four pages; a cap of two checks only two of them, so
+    # the summary has to admit the link set is a checked subset.
+    capped = settings.model_copy(update={"max_links_per_article": 2})
+
+    result = await analyze_article(FakeWikipediaClient(), capped, ADA)
+
+    assert result.summary.links_truncated is True
+    assert result.summary.total_links == 2
+    # The two checked links are the existing ones, so nothing is reported missing.
+    assert result.summary.total_missing == 0
+    assert result.missing_connections == []
+
+
+async def test_summary_is_not_truncated_when_every_link_fits(
+    settings: Settings,
+) -> None:
+    result = await analyze_article(FakeWikipediaClient(), settings, ADA)
+
+    assert result.summary.links_truncated is False
+    assert result.summary.total_links == 4
+
+
+async def test_existing_links_are_typed_from_their_own_article(
+    settings: Settings,
+) -> None:
+    # A link that resolves to an article is described by that article, so an
+    # existing place is identified without any Wikidata search.
+    result = await analyze_article(FakeWikipediaClient(), settings, ADA)
+    types = {link.title: link.entity_type for link in result.links}
+
+    assert types[LONDON] == "place"
+    assert types[ENGINE] == "other"
+    assert result.summary.described_links == 2
+
+
+async def test_people_and_places_are_counted_and_split_by_existence(
+    settings: Settings,
+) -> None:
+    result = await analyze_article(FakeWikipediaClient(), settings, ADA)
+
+    # London exists and is a place; Somerton, Malta is a place with no article.
+    # `total_places` counts every place found, `missing_places` only the ones
+    # without an article, which is what the two sections each need.
+    assert result.summary.total_places == 2
+    assert result.summary.missing_places == 1
+    assert result.summary.total_people == 0
+    assert result.summary.missing_people == 0
+
+    # Every person or place is reachable from the link list, so a consumer can
+    # build the people, places, missing people and missing places sections from
+    # one source without a second request.
+    links = result.links
+    assert {link.title for link in links if link.entity_type == "place"} == {LONDON, VILLAGE}
+    assert {
+        link.title
+        for link in links
+        if link.entity_type == "place" and not link.exists
+    } == {VILLAGE}
+
+
+async def test_every_entity_carries_name_type_source_and_status(
+    settings: Settings,
+) -> None:
+    result = await analyze_article(FakeWikipediaClient(), settings, ADA)
+
+    for link in result.links:
+        assert link.title
+        assert link.entity_type in {"person", "place", "other"}
+        assert link.source_title == ADA
+        assert link.source_url
+        assert link.state in {"exists", "missing"}
+        # A Wikipedia link is present exactly when the article exists.
+        assert bool(link.url) is link.exists
+
+
+async def test_a_missing_name_is_left_untyped_when_the_classify_cap_is_hit(
+    settings: Settings,
+) -> None:
+    # Two missing names, but only one may be sent to Wikidata.
+    capped = settings.model_copy(update={"classify_max_items": 1})
+
+    result = await analyze_article(FakeWikipediaClient(), capped, ADA)
+
+    assert result.summary.classify_truncated is True
+    typed = {item.title: item.entity_type for item in result.missing_connections}
+    # Only the first missing name reaches Wikidata, so the second stays at the
+    # default rather than being guessed at.
+    assert typed[VILLAGE] == "other"
+    assert typed[NOVEL] == "other"
+
+
+async def test_classification_is_not_truncated_when_every_name_fits(
+    settings: Settings,
+) -> None:
+    result = await analyze_article(FakeWikipediaClient(), settings, ADA)
+
+    assert result.summary.classify_truncated is False
+
+
+async def test_classified_existing_link_is_not_the_default_other(
+    settings: Settings,
+) -> None:
+    # Guards the regression where only missing names were classified, which left
+    # every existing person and place reported as "other".
+    graph = await build_link_graph(FakeWikipediaClient(), settings, ADA)
+    types, described, truncated = await classify_links(
+        FakeWikipediaClient(), settings, graph
+    )
+
+    assert types[LONDON] == "place"
+    assert described == 2
+    assert truncated is False
+
+
+async def test_a_compound_word_is_not_read_as_a_role(settings: Settings) -> None:
+    # "general-purpose" must not be read as the military rank "general".
+    assert classifier.classify_description(
+        "mechanical general-purpose computer"
+    ) == "other"
+    assert classifier.classify_description("general relativity") == "other"
+    assert classifier.classify_description("association football player") == "person"
 
 
 async def test_extracted_links_carry_article_urls(settings: Settings) -> None:

@@ -165,6 +165,13 @@ def test_analyze(client: TestClient) -> None:
         "total_one_way": 1,
         "one_way_targets_checked": 2,
         "one_way_truncated": False,
+        "links_truncated": False,
+        "described_links": 2,
+        "classify_truncated": False,
+        "total_people": 0,
+        "total_places": 2,
+        "missing_people": 0,
+        "missing_places": 1,
     }
 
 

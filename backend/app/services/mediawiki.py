@@ -445,6 +445,46 @@ class MediaWikiClient:
         return result
 
     # ------------------------------------------------------------------
+    # page descriptions (used to tell people and places apart)
+    # ------------------------------------------------------------------
+    async def get_page_descriptions(self, page_ids: Iterable[int]) -> dict[int, str]:
+        """Wikibase short descriptions for many pages, keyed by page id.
+
+        An article's own short description ("English mathematician and writer",
+        "village in Malta") is what identifies it as a person or a place, and it
+        comes from the article itself rather than from a name search. The API
+        returns it for up to 50 pages per request, so describing every link of an
+        article costs a handful of requests instead of one per link.
+
+        A page with no description, and any page id that could not be read, is
+        simply absent from the result: the caller then has no description to
+        classify from, which is different from a description that matched
+        nothing.
+        """
+
+        ids = sorted({int(page_id) for page_id in page_ids if page_id})
+        if not ids:
+            return {}
+
+        descriptions: dict[int, str] = {}
+        for batch in chunked(ids, _MAX_TITLES_PER_REQUEST):
+            data = await self._api_get(
+                {
+                    "action": "query",
+                    "prop": "description",
+                    "pageids": "|".join(str(page_id) for page_id in batch),
+                    "redirects": _MAX_REDIRECTS,
+                }
+            )
+            for page in (data.get("query") or {}).get("pages") or []:
+                page_id = page.get("pageid")
+                description = page.get("description")
+                if page_id and isinstance(description, str) and description.strip():
+                    descriptions[int(page_id)] = description.strip()
+
+        return descriptions
+
+    # ------------------------------------------------------------------
     # Wikidata (used only for the person / place guess)
     # ------------------------------------------------------------------
     async def wikidata_descriptions(self, term: str) -> str | None:

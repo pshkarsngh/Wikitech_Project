@@ -13,8 +13,7 @@ from app.schemas import (
     ResolvedTitle,
     SearchResponse,
 )
-from app.services import classifier
-from app.services.analysis import build_extracted_links, build_link_graph
+from app.services.analysis import build_extracted_links, build_link_graph, classify_links
 from app.services.mediawiki import ArticleNotFoundError, WikipediaError
 
 router = APIRouter(tags=["articles"])
@@ -88,8 +87,7 @@ async def get_article_links(
     except WikipediaError as exc:
         raise _upstream_error(exc) from exc
 
-    missing_titles = [item.requested for item in graph.missing]
-    types = await classifier.classify_titles(client, missing_titles, settings)
+    types, _described, _truncated = await classify_links(client, settings, graph)
     links = build_extracted_links(graph, types)
 
     return ArticleLinksResponse(

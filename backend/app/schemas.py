@@ -130,6 +130,20 @@ class AnalysisSummary(BaseModel):
     total_one_way: int = 0
     one_way_targets_checked: int = 0
     one_way_truncated: bool = False
+    # True when the article has more links than `max_links_per_article` and only
+    # the first ones were checked, so `total_links` is a checked subset rather
+    # than the article's real link count.
+    links_truncated: bool = False
+    # How many links were typed from a real article description, and whether the
+    # `classify_max_items` cap left any missing names unclassified. Together they
+    # say how much of the entity breakdown is evidence and how much is a default.
+    described_links: int = 0
+    classify_truncated: bool = False
+    # People and places found, split by whether the target has an article.
+    total_people: int = 0
+    total_places: int = 0
+    missing_people: int = 0
+    missing_places: int = 0
 
 
 class AnalysisResult(BaseModel):

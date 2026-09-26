@@ -10,6 +10,13 @@ const EMPTY_SUMMARY = {
   total_one_way: 0,
   one_way_targets_checked: 0,
   one_way_truncated: false,
+  links_truncated: false,
+  described_links: 0,
+  classify_truncated: false,
+  total_people: 0,
+  total_places: 0,
+  missing_people: 0,
+  missing_places: 0,
 }
 
 const initialState = {

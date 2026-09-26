@@ -1,0 +1,97 @@
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* A person and a place read the same shape; the card's own left rule carries
+   the category, so the row only has to carry the name and the status. */
+.row {
+  display: flex;
+  gap: 0.4rem 0.9rem;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface-hover);
+  border-radius: var(--radius);
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.name {
+  min-width: 0;
+  font-size: 0.95rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+a.name:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.source {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.source a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.source a:hover {
+  color: var(--text);
+}
+
+.rowStatus {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.statusNote {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.note {
+  padding-top: 0.9rem;
+  margin: 0.9rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+.note code {
+  padding: 0.05rem 0.3rem;
+  font-size: 0.95em;
+  background: var(--surface-hover);
+  border-radius: 4px;
+}
+
+@media (max-width: 560px) {
+  .rowStatus {
+    /* Name keeps its own line on narrow screens, so the status group drops
+       underneath it instead of squeezing the title. */
+    flex: 1 1 100%;
+  }
+}

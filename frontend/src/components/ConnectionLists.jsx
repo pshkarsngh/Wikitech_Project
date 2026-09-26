@@ -23,30 +23,50 @@ export function MissingConnectionsList({
   connections,
   totalLinks,
   totalMissing,
+  linksTruncated = false,
 }) {
   const [filter, setFilter] = useState('all')
+
+  // Two different link titles can redirect to the same article, so one missing
+  // name can arrive twice. It is one connection, so it is listed once; Wikipedia
+  // titles are case-insensitive on the first letter, hence the lowercase key.
+  const unique = useMemo(() => {
+    const seen = new Set()
+    return connections.filter((item) => {
+      const key = item.title.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [connections])
 
   const filtered = useMemo(
     () =>
       filter === 'all'
-        ? connections
-        : connections.filter((item) => item.entity_type === filter),
-    [connections, filter],
+        ? unique
+        : unique.filter((item) => item.entity_type === filter),
+    [unique, filter],
   )
 
   const counts = useMemo(
     () => ({
-      person: connections.filter((item) => item.entity_type === 'person').length,
-      place: connections.filter((item) => item.entity_type === 'place').length,
-      other: connections.filter((item) => item.entity_type === 'other').length,
+      person: unique.filter((item) => item.entity_type === 'person').length,
+      place: unique.filter((item) => item.entity_type === 'place').length,
+      other: unique.filter((item) => item.entity_type === 'other').length,
     }),
-    [connections],
+    [unique],
   )
 
   // The checked total makes the section readable against the connections that
   // do have an article, which is the whole point of the classification.
-  const checked = totalLinks ?? connections.length
-  const existing = Math.max(0, checked - (totalMissing ?? connections.length))
+  const checked = totalLinks ?? unique.length
+  const existing = Math.max(0, checked - (totalMissing ?? unique.length))
+
+  // With a truncated link set the section cannot claim to cover every link in
+  // the article, so the wording and a note both say so.
+  const coverage = linksTruncated
+    ? `of the first ${checked} links checked`
+    : `of the ${checked} links checked`
 
   return (
     <Card
@@ -55,12 +75,11 @@ export function MissingConnectionsList({
       subtitle={
         <>
           Every person or place linked from this article that has no article of
-          its own yet. {existing} of the {checked} checked links have an
-          article.
+          its own yet. {existing} {coverage} have an article.
         </>
       }
       action={
-        connections.length > 0 && (
+        unique.length > 0 && (
           <div className={styles.filters} role="group" aria-label="Filter by type">
             {FILTERS.map((item) => (
               <button
@@ -74,14 +93,14 @@ export function MissingConnectionsList({
               >
                 {item.label}
                 {item.value !== 'all' && ` (${counts[item.value]})`}
-                {item.value === 'all' && ` (${connections.length})`}
+                {item.value === 'all' && ` (${unique.length})`}
               </button>
             ))}
           </div>
         )
       }
     >
-      {connections.length === 0 ? (
+      {unique.length === 0 ? (
         <EmptyState
           title="No missing connections"
           description="Every main-namespace link in this article points to an article that exists. That is rare for a well-developed article."
@@ -92,41 +111,50 @@ export function MissingConnectionsList({
           description="Clear the filter to see all missing connections."
         />
       ) : (
-        <ul className={styles.list} aria-label="Missing connections">
-          {filtered.map((item) => (
-            <li key={item.title} className={styles.itemMissing}>
-              <div className={styles.itemMain}>
-                <span className={styles.itemTitle}>{item.title}</span>
-                {item.source_title && (
-                  <span className={styles.source}>
-                    from{' '}
-                    {item.source_url ? (
-                      <a
-                        href={item.source_url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                      >
-                        {item.source_title} ↗
-                      </a>
-                    ) : (
-                      item.source_title
-                    )}
-                  </span>
-                )}
-              </div>
-              <div className={styles.itemStatus}>
-                {TYPED.has(item.entity_type) && (
-                  <EntityBadge entityType={item.entity_type} />
-                )}
-                <ConnectionStateBadge
-                  state={item.state}
-                  exists={item.exists}
-                />
-                <span className={styles.statusNote}>no article yet</span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className={styles.list} aria-label="Missing connections">
+            {filtered.map((item) => (
+              <li key={item.title} className={styles.itemMissing}>
+                <div className={styles.itemMain}>
+                  <span className={styles.itemTitle}>{item.title}</span>
+                  {item.source_title && (
+                    <span className={styles.source}>
+                      from{' '}
+                      {item.source_url ? (
+                        <a
+                          href={item.source_url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                        >
+                          {item.source_title} ↗
+                        </a>
+                      ) : (
+                        item.source_title
+                      )}
+                    </span>
+                  )}
+                </div>
+                <div className={styles.itemStatus}>
+                  {TYPED.has(item.entity_type) && (
+                    <EntityBadge entityType={item.entity_type} />
+                  )}
+                  <ConnectionStateBadge
+                    state={item.state}
+                    exists={item.exists}
+                  />
+                  <span className={styles.statusNote}>no article yet</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {linksTruncated && (
+            <p className={styles.note}>
+              This article has more links than were checked, so this list can be
+              incomplete. Raise <code>MAX_LINKS_PER_ARTICLE</code> in{' '}
+              <code>backend/.env</code> to check all of them.
+            </p>
+          )}
+        </>
       )}
     </Card>
   )

@@ -12,6 +12,7 @@ export default function MissingConnectionsPage() {
           connections={missingConnections}
           totalLinks={summary.total_links}
           totalMissing={summary.total_missing}
+          linksTruncated={summary.links_truncated}
         />
       )}
     </ResultLayout>

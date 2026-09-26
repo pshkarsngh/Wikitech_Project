@@ -135,24 +135,64 @@ async def build_link_graph(
     return graph
 
 
+async def classify_links(
+    client: MediaWikiClient, settings: Settings, graph: LinkGraph
+) -> tuple[dict[str, str], int, bool]:
+    """Entity type for every extracted link, keyed by the linked title.
+
+    Two different sources, because the two kinds of link carry different
+    information:
+
+    * A link that resolves to an article is described by that article. The
+      descriptions are fetched in batches, so classifying every link of an
+      article costs a handful of requests rather than one request per link.
+    * A missing link has no article and so no description of its own. Its type
+      has to come from Wikidata, one request per name, which is capped by
+      ``classify_max_items``.
+
+    Returns the types, how many links were classified from a real description,
+    and whether the cap left any missing names unclassified.
+    """
+
+    types: dict[str, str] = {}
+    described = 0
+
+    descriptions = await client.get_page_descriptions(
+        item.page_id for item in graph.existing if item.page_id is not None
+    )
+    for item in graph.existing:
+        description = descriptions.get(item.page_id) if item.page_id else None
+        types[item.requested] = classifier.classify_description(description)
+        if description:
+            described += 1
+
+    missing_types, truncated = await classifier.classify_titles(
+        client, [item.requested for item in graph.missing], settings
+    )
+    types.update(missing_types)
+
+    return types, described, truncated
+
+
 async def detect_missing_connections(
     client: MediaWikiClient, settings: Settings, graph: LinkGraph
 ) -> tuple[list[MissingConnection], dict[str, str]]:
     """Every mentioned person or place that has no article yet."""
 
-    titles = [item.requested for item in graph.missing]
-    types = await classifier.classify_titles(client, titles, settings)
+    missing_types, _ = await classifier.classify_titles(
+        client, [item.requested for item in graph.missing], settings
+    )
 
     connections = [
         MissingConnection(
             title=item.requested,
-            entity_type=types.get(item.requested, classifier.OTHER),
+            entity_type=missing_types.get(item.requested, classifier.OTHER),
             source_title=graph.title,
             source_url=graph.url,
         )
         for item in graph.missing
     ]
-    return connections, types
+    return connections, missing_types
 
 
 async def detect_one_way_connections(
@@ -362,8 +402,18 @@ async def analyze_article(
 
     article = await client.get_article(title)
     graph = await build_link_graph(client, settings, article.title)
-    missing, types = await detect_missing_connections(client, settings, graph)
+    types, described, classify_truncated = await classify_links(client, settings, graph)
     one_way = await detect_one_way_connections(client, settings, graph)
+
+    missing = [
+        MissingConnection(
+            title=item.requested,
+            entity_type=types.get(item.requested, classifier.OTHER),
+            source_title=graph.title,
+            source_url=graph.url,
+        )
+        for item in graph.missing
+    ]
 
     return AnalysisResult(
         article=article,
@@ -374,6 +424,17 @@ async def analyze_article(
             total_one_way=len(one_way.connections),
             one_way_targets_checked=one_way.checked_count,
             one_way_truncated=one_way.truncated,
+            links_truncated=graph.truncated,
+            described_links=described,
+            classify_truncated=classify_truncated,
+            total_people=sum(1 for value in types.values() if value == classifier.PERSON),
+            total_places=sum(1 for value in types.values() if value == classifier.PLACE),
+            missing_people=sum(
+                1 for item in missing if item.entity_type == classifier.PERSON
+            ),
+            missing_places=sum(
+                1 for item in missing if item.entity_type == classifier.PLACE
+            ),
         ),
         missing_connections=missing,
         one_way_connections=one_way.connections,

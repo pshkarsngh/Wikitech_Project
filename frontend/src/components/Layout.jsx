@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Home', end: true },
   { to: '/search', label: 'Search' },
   { to: '/analyze', label: 'Analysis' },
+  { to: '/people-and-places', label: 'People & Places' },
   { to: '/missing-connections', label: 'Missing Connections' },
   { to: '/one-way-connections', label: 'One-Way Connections' },
   { to: '/connection-map', label: 'Connection Map' },
