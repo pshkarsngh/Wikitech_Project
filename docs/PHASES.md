@@ -682,7 +682,7 @@ Prove that the released application continues to perform the defined core workfl
 
 ## 7. Rollback / Revert
 
-* [ ] `[Name]` can trigger the approved production rollback if a release-blocking issue is discovered.
+* [x] `[Name]` can trigger the approved production rollback if a release-blocking issue is discovered.
 
 ## 8. Exit Criteria
 
