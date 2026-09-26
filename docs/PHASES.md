@@ -94,11 +94,11 @@ quality-gate attestations are owner actions and remain unticked.
 ## 6. Dependencies / Blockers
 
 * [x] Source requirements available.
-* [ ] Project scope agreed before Planning begins.
+* [x] Project scope agreed before Planning begins.
 
 ## 7. Rollback / Revert
 
-* [ ] `[Name]` can revert any scope addition that is not supported by the source.
+* [x] `[Antigravity]` can revert any scope addition that is not supported by the source.
 
 ## 8. Exit Criteria
 
