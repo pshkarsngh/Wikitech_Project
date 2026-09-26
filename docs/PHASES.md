@@ -444,10 +444,10 @@ classification without touching the network. Outstanding:
 
 ### Result
 
-* [ ] `[Name]` verifies connections found are displayed.
-* [ ] `[Name]` verifies existing articles are displayed.
-* [ ] `[Name]` verifies missing connections are displayed.
-* [ ] `[Name]` verifies one-way connections are displayed.
+* [x] `[Name]` verifies connections found are displayed.
+* [x] `[Name]` verifies existing articles are displayed.
+* [x] `[Name]` verifies missing connections are displayed.
+* [x] `[Name]` verifies one-way connections are displayed.
 
 ## 4. Deliverables
 
