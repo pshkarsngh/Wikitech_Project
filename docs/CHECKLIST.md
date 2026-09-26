@@ -2,7 +2,7 @@
 
 ## Find the Missing Connections
 
-**Version:** 1.1
+**Version:** 1.2
 **Date:** 26 September 2026
 **Scope:** Every tracked file in the repository, with its responsibility and the
 checks that apply when you touch it.
@@ -12,7 +12,7 @@ this document, not delivery of the project. Delivery progress lives in `PHASES.m
 requirements live in `PRD.md`; technical specification lives in `TRD.md`; structure and
 invariants live in `ARCHITECTURE.md` and `../AGENTS.md`.
 
-**Verification basis:** 77 tracked files, enumerated in §15. Code is truth — where this
+**Verification basis:** 80 tracked files, enumerated in §15. Code is truth — where this
 file and the code disagree, the code wins and this file is the bug.
 
 ## How to read the check marks
@@ -53,30 +53,28 @@ Re-verify a row whenever the file it describes changes.
 
 ---
 
-# 1. Repository Root — [x] verified 2026-09-26
+# 1. Repository Root — [x] verified 2026-09-26 (re-verified after `a48046f`, `97955b0`)
 
-The root holds exactly **3 tracked files** and **4 tracked directories**. Nothing else
-is committed here.
+The root holds exactly **2 tracked files** and **4 tracked directories**. Nothing else
+is committed here. `DESIGN.md` was **moved to `docs/DESIGN.md`** in `97955b0`.
 
 ## 1.1 Top-Level Layout
 
 | Done | Path | Kind | Contents | Documented in |
 | ---- | ---- | ---- | -------- | ------------- |
 | [x] | `backend/` | dir | 15 app modules, 7 test modules, 4 config files | §2–§6 |
-| [x] | `frontend/` | dir | 31 `src` files, 9 config/entry/public files | §8–§11 |
+| [x] | `frontend/` | dir | 34 `src` files, 9 config/entry/public files | §8–§11 |
 | [x] | `database/` | dir | compose, SQL, readme (3 files) | §7 |
-| [x] | `docs/` | dir | PRD, TRD, PHASES, ARCHITECTURE, CHECKLIST (5 files) | §12 |
+| [x] | `docs/` | dir | PRD, TRD, PHASES, ARCHITECTURE, CHECKLIST, DESIGN (6 files) | §12 |
 | [x] | `AGENTS.md` | file | Project instructions — invariants, conventions, commands | §1.2 |
-| [x] | `DESIGN.md` | file | Design-system spec | §1.2 |
-| [x] | `.gitignore` | file | 28 lines of ignore rules | §1.2 |
+| [x] | `.gitignore` | file | 26 lines of ignore rules | §1.2 |
 
 ## 1.2 Tracked Files
 
 | Done | File | Purpose | Check when touched |
 | ---- | ---- | ------- | ------------------ |
 | [x] | `AGENTS.md` | Load-bearing project instructions: layout, commands, stack, 8 architecture invariants, backend/frontend conventions, testing rules, design-system rules, docs-vs-code warnings, scope lock, Windows quirks, never-do list. | **Read it before any change.** Update it in the same commit as any convention or invariant change. Must stay committed, not ignored. |
-| [x] | `DESIGN.md` | Design-system spec: colour, type, and radius tokens. **Not** an architecture document — it says nothing about setup, routes, or structure. | The tokens are already materialised in `frontend/src/index.css:1-71`. Edit the CSS, then keep this in sync. It also references tooling that is not in this repo (`scripts/derive-examples-block.mjs`, `/preview-design`, `/generate-kit`, `TO_FILL` markers) — do not treat those as available. |
-| [x] | `.gitignore` | Python (`__pycache__/`, `*.py[cod]`, `.venv/`, `venv/`, `.pytest_cache/`, `.ruff_cache/`), Node (`node_modules/`, `dist/`, `dist-ssr/`, `*.local`), environment (`.env`), editors/OS, and local agent tooling (`.agents/`, `.claude/`, `skills/`, `skills-lock.json`). | `.env` is ignored — never force-add it. `AGENTS.md` is **not** in this file and must stay that way. `.ruff_cache/` is listed even though no ruff is installed; that is harmless. |
+| [x] | `.gitignore` | Python (`__pycache__/`, `*.py[cod]`, `.venv/`, `venv/`, `.pytest_cache/`, `.ruff_cache/`), Node (`node_modules/`, `dist/`, `dist-ssr/`, `*.local`), environment (`.env`), dev-server output (`*.log`, added in `a48046f`), editors/OS, and local agent tooling (`.agents/`, `.claude/`, `skills/`, `skills-lock.json`). | `.env` is ignored — never force-add it. `AGENTS.md` is **not** in this file and must stay that way. `.ruff_cache/` is listed even though no ruff is installed; that is harmless. |
 
 ## 1.3 Confirmed Absent
 
@@ -85,6 +83,7 @@ tooling exists.
 
 | Done | Path | Status | Consequence of assuming it exists |
 | ---- | ---- | ------ | ---------------------------------- |
+| [x] | `DESIGN.md` (at root) | **Moved to `docs/DESIGN.md`** | It is no longer at the root. `AGENTS.md` §2 and §9 point at the `docs/` path. Do not recreate a root copy. |
 | [x] | `README.md` | Absent | There is no committed setup guide. `AGENTS.md` §3 is the only source of truth for commands. If you add one, it must not contradict `AGENTS.md` §3. |
 | [x] | `.github/` | Absent | **No CI.** No automated test, lint, or build on push. Every check in §14 is local and manual — you own running them. |
 | [x] | `Dockerfile` | Absent | No container image for the app. `database/docker-compose.yml` is the only Docker artefact, and it runs PostgreSQL only. |
@@ -155,22 +154,22 @@ Zero `fastapi` imports are permitted in this directory.
 | Done | File | Responsibility | Check when touched |
 | ---- | ---- | -------------- | ------------------ |
 | [ ] | `backend/app/services/__init__.py` | Package marker. | — |
-| [ ] | `backend/app/services/mediawiki.py` | **The only module that performs HTTP.** Exceptions `WikipediaError` (31) / `ArticleNotFoundError` (35); helpers `normalize_title` (39), `title_key` (45), `chunked` (51), `wiki_host` (57), `is_internal_article_link` (63); `ArticleLinks` (84); `MediaWikiClient` (92) with `search_articles`, `get_article`, `find_article`, `get_article_links`, `resolve_titles`, `get_links_for_page_ids`, `wikidata_descriptions`. | All requests funnel through the private `_api_get` (line 116). Batch size is the private `_MAX_TITLES_PER_REQUEST = 50`, **not** the `missing_check_batch_size` setting, which is dead config. Two attempts with a 1s sleep between them. |
-| [ ] | `backend/app/services/analysis.py` | The analysis pipeline. `index_resolved` (52), `LinkGraph` (76), `OneWayResult` (93), `build_link_graph` (100), `detect_missing_connections` (138), `detect_one_way_connections` (158), `build_extracted_links` (216), `build_connection_map` (261), `analyze_article` (358). | `build_extracted_links` (lines 238-244) drops any link the existence check did not answer. Do not "fix" this by defaulting to `exists`/`missing` — a partial answer must not look like a complete one. |
+| [ ] | `backend/app/services/mediawiki.py` | **The only module that performs HTTP.** Exceptions `WikipediaError` (31) / `ArticleNotFoundError` (35); helpers `normalize_title` (39), `title_key` (45), `chunked` (51), `wiki_host` (57), `is_internal_article_link` (63); `ArticleLinks` (84); `MediaWikiClient` (92) with `search_articles`, `get_article`, `find_article`, `get_article_links`, `resolve_titles`, `get_links_for_page_ids`, `wikidata_descriptions`, and — added in `a48046f` — `get_page_descriptions`. | All requests funnel through the private `_api_get` (line 116). Batch size is the private `_MAX_TITLES_PER_REQUEST = 50`, **not** the `missing_check_batch_size` setting, which is dead config. Two attempts with a 1s sleep between them. |
+| [ ] | `backend/app/services/analysis.py` | The analysis pipeline. `index_resolved` (52), `LinkGraph` (76), `OneWayResult` (93), `build_link_graph` (100), `classify_links` (138, **new in `a48046f`**), `detect_missing_connections` (177), `detect_one_way_connections` (198), `build_extracted_links` (256), `build_connection_map` (301), `analyze_article` (398). | `build_extracted_links` (lines 278-284) drops any link the existence check did not answer. Do not "fix" this by defaulting to `exists`/`missing` — a partial answer must not look like a complete one. Line numbers shifted when `classify_links` was inserted. |
 | [ ] | `backend/app/services/classifier.py` | Wikidata-description-based `person`/`place`/`other` classification. `classify_description` (63), `looks_like_person` (73), `classify_titles` (81). | Best-effort by design; the `# noqa: BLE001` at line 93 is deliberate. `looks_like_person` is currently uncalled — wired for future use, do not delete as cleanup. |
 
 ---
 
 # 5. Backend — Tests
 
-59 tests total: 16 + 19 + 24. Verified by `pytest --collect-only` on 2026-09-26.
+68 tests total: 25 + 19 + 24. Re-verified 2026-09-26 after `a48046f` (was 59: 16 + 19 + 24).
 
 | Done | File | Contents | Check when touched |
 | ---- | ---- | -------- | ------------------ |
 | [ ] | `backend/tests/__init__.py` | Makes `tests` importable so `python -m tests.smoke_live` works. | — |
 | [ ] | `backend/tests/conftest.py` | Exactly one fixture: `settings`, with `database_url=""` and explicit budgets. | `pytest.ini` sets `pythonpath = .`, so pytest must run from `backend/`. |
 | [ ] | `backend/tests/fake_wikipedia.py` | `FakeWikipediaClient` — duck-typed stand-in injected through `app.state`. Fixture graph: `Ada Lovelace` (page 1) → `Analytical Engine` (2, mutual), `London` (3, one-way), `Byron's Daughter` (missing, novel → other), `Somerton, Malta` (missing, village → place). Records `link_calls`, `resolve_calls`, `reverse_calls`. | The primary no-network seam. Extend this rather than adding a mocking library. |
-| [ ] | `backend/tests/test_analysis.py` | 16 tests. Graph building, missing/one-way detection, budgets, map edge statuses, self-link removal, redirect attribution. | Monkeypatches by reassigning instance attributes on the fake. |
+| [ ] | `backend/tests/test_analysis.py` | 25 tests (was 16; 9 added in `a48046f`). Graph building, missing/one-way detection, budgets, map edge statuses, self-link removal, redirect attribution, people/place classification and truncation. | Monkeypatches by reassigning instance attributes on the fake. |
 | [ ] | `backend/tests/test_api.py` | 19 tests. Every route plus 404/422/502 paths. | **Asserts exact whole payloads.** Any schema field change breaks these. |
 | [ ] | `backend/tests/test_mediawiki.py` | 24 tests. Title normalisation, `chunked`, `is_internal_article_link`, `wiki_host`, resolve/redirect/invalid handling, `find_article` fallbacks, namespace filtering, dedup. | Uses `StubClient` / `SequencedStubClient`, which skip `super().__init__()` and replace `_api_get`. The three `# noqa: D107` markers (lines 54, 67, 269) are load-bearing comments. |
 | [ ] | `backend/tests/smoke_live.py` | Live script against the real MediaWiki/Wikidata APIs. | **Not collected by pytest** (filename does not match `test_*.py`) and not a substitute for it. The only file permitted to touch the network, and only when run deliberately. |
@@ -219,8 +218,8 @@ Zero `fastapi` imports are permitted in this directory.
 | Done | File | Responsibility | Check when touched |
 | ---- | ---- | -------------- | ------------------ |
 | [ ] | `frontend/src/main.jsx` | React root, router provider, imports `./index.css`. | Uses explicit `.jsx` extensions (unlike most other files — both work under Vite). |
-| [ ] | `frontend/src/index.css` | Global reset plus **all design tokens at lines 1-71**. | The only place tokens are edited. `--primary: #9fe870` is the single accent; `--radius-xl: 24px`; `--positive` is for success. Never add a colour literal in a component. |
-| [ ] | `frontend/src/App.jsx` | Route table. `/`, `/search`, `/analyze`, `/missing-connections`, `/one-way-connections`, `/connection-map`, `/home` (redirect to `/`), `*` → 404. | `ConnectionMapPage` is `lazy()`-loaded (line 14) because Cytoscape is heavy. Follow that pattern for any new heavy route. |
+| [ ] | `frontend/src/index.css` | Global reset plus **all design tokens at lines 1-67**. Palette migrated to Miro in `97955b0`. | The only place tokens are edited. `--accent: #4262ff` is the interactive hue; `--primary: #1c1c1e` is the near-black action colour, not an accent. `--radius-xl: 16px`. Success is `--mutual: #00b473` — **there is no `--positive` token any more**. Never add a colour literal in a component. |
+| [ ] | `frontend/src/App.jsx` | Route table. `/`, `/search`, `/analyze`, `/people-and-places` (**new in `a48046f`**), `/missing-connections`, `/one-way-connections`, `/connection-map`, `/home` (redirect to `/`), `*` → 404. | `ConnectionMapPage` is `lazy()`-loaded (line 15) because Cytoscape is heavy. Follow that pattern for any new heavy route. |
 | [ ] | `frontend/src/api/client.js` | `ApiError` (9), `query` (46), and the endpoint wrappers. | `DEFAULT_BASE_URL = '/api'`. In use: `searchArticles` (SearchBar), `analyzeArticle` (AnalysisContext), `findArticle` (SearchPage), `getConnectionMap` (ConnectionMapPage). **Declared but currently uncalled:** `getArticle`, `getArticleLinks`, `checkArticlesExist`, `getMissingConnections`, `getOneWayConnections` — they exist, so do not treat the backend routes as dead. `status === 0` means the backend was unreachable. |
 | [ ] | `frontend/src/context/AnalysisContext.jsx` | Single `useState` object, `AnalysisProvider` (27), `useAnalysis` (75). | React 19 form: `<AnalysisContext value={...}>`, no `.Provider`. `useAnalysis()` throws outside the provider. `run` is `useCallback(fn, [])` to keep identity stable. All result pages share this one context — navigating between them does not refetch. |
 | [ ] | `frontend/src/hooks/useArticleParam.js` | Syncs `?title=` with the context. | URL is the source of truth. Uses a `useRef` guard to prevent re-runs, and rewrites the URL with `replace: true` when MediaWiki resolved a different title. |
@@ -233,7 +232,8 @@ Zero `fastapi` imports are permitted in this directory.
 | ---- | ---- | ----- | -------------- | ------------------ |
 | [ ] | `frontend/src/pages/HomePage.jsx` | `/` | Landing page. `FEATURES` (6), `EXAMPLES` (21: Chandni Chowk, Ada Lovelace, Bongaon). | — |
 | [ ] | `frontend/src/pages/SearchPage.jsx` | `/search` | Resolves a name to one article, then hands off to analysis. `IDLE` state (9). | Guards against stale responses — results belong on screen only for the current query. |
-| [ ] | `frontend/src/pages/AnalysisPage.jsx` | `/analyze` | Thin wrapper over `ResultLayout` + `ArticleConnections`. | — |
+| [ ] | `frontend/src/pages/AnalysisPage.jsx` | `/analyze` | Thin wrapper over `ResultLayout` + `ArticleConnections`; gained the entity sections in `a48046f`. | — |
+| [ ] | `frontend/src/pages/EntitiesPage.jsx` | `/people-and-places` | **New in `a48046f`.** People and places split by whether the target has an article. | New page — check it against the `/analyze` shape before assuming parity. |
 | [ ] | `frontend/src/pages/MissingConnectionsPage.jsx` | `/missing-connections` | Wrapper over `ResultLayout` + `MissingConnectionsList`. | — |
 | [ ] | `frontend/src/pages/OneWayConnectionsPage.jsx` | `/one-way-connections` | Wrapper over `ResultLayout` + `OneWayConnectionsList`. | — |
 | [ ] | `frontend/src/pages/ConnectionMapPage.jsx` | `/connection-map` | Second, independent call to `getConnectionMap` for the graph. | The only page that fetches on its own; the map payload is not part of `AnalysisResult`. |
@@ -257,9 +257,11 @@ modifier/variant classes are snake_case and are built with bracket notation
 | [ ] | `frontend/src/components/ArticleSummary.jsx` | default `ArticleSummary` | Article title, description, extract, link out to Wikipedia. | External links need `rel="noreferrer noopener"`. |
 | [ ] | `frontend/src/components/ArticleConnections.jsx` | default `ArticleConnections` | The full link list with pagination (`PAGE_SIZE = 50`, line 6). | Counts are derived from the rows on screen so the list and numbers always agree. |
 | [ ] | `frontend/src/components/ConnectionLists.jsx` | `MissingConnectionsList` (22), `OneWayConnectionsList` (135) | The two gap lists. `FILTERS` (11), `TYPED` (20). | Multi-export file, so named exports only. |
+| [ ] | `frontend/src/components/EntitySections.jsx` | default `EntitySections` | **New in `a48046f`.** People and places sections rendered from the classifier split. | New component — same CSS Module and derived-not-stored rules as its neighbours. |
+| [ ] | `frontend/src/components/EntitySections.module.css` | — | **New in `a48046f`.** Colocated styles for the above. | Tokens only, no colour literals. |
 | [ ] | `frontend/src/components/ConnectionMap.jsx` | default `ConnectionMap` | Cytoscape render. `LEGEND_ITEMS` (7), `elementsFor` (14), `stylesheet` (46). | Pulled in via `lazy()` on purpose. Missing nodes must stay visually distinct. |
 | [ ] | `frontend/src/components/ui.jsx` | 8 named exports | `EntityBadge` (9), `ConnectionStateBadge` (18), `StatCard` (33), `Card` (43), `EmptyState` (60), `Loading` (70), `ErrorMessage` (79), `Legend` (96). | `ENTITY_LABELS` (3) is the entity-type display map. `ErrorMessage` accepts an `Error` or a string. |
-| [ ] | `components/*.module.css` (7 files) | — | Colocated styles for the components above. | No new colour literals — tokens only. |
+| [ ] | `components/*.module.css` (8 files) | — | Colocated styles for the components above. | No new colour literals — tokens only. |
 
 ---
 
@@ -271,6 +273,7 @@ modifier/variant classes are snake_case and are built with bracket notation
 | [ ] | `docs/TRD.md` | Technical requirements v1.0, 25 sections. | **Known-stale** — see §13. |
 | [ ] | `docs/PHASES.md` | 9-phase checklist with entry/exit criteria, dependency register, acceptance list. | Phase 4's gate requires "backend lint", which does not exist. |
 | [ ] | `docs/ARCHITECTURE.md` | Architecture v1.0, sections 1-10. Section 11 (Deployment / Infrastructure) is a **TODO placeholder** — the source text was truncated when it was written. | Fill section 11 in when the deployment design is decided. |
+| [ ] | `docs/DESIGN.md` | Design-system spec: colour, type, radius tokens. **Moved here from the repository root in `97955b0`.** Not an architecture document — it says nothing about setup, routes, or structure. | The tokens are materialised in `frontend/src/index.css:1-67`. Edit the CSS, then keep this in sync. It references tooling not present in this repo (`scripts/derive-examples-block.mjs`, `/preview-design`, `/generate-kit`, `TO_FILL` markers) — do not treat those as available. |
 | [ ] | `docs/CHECKLIST.md` | This file. | Update it in the same commit as any file added, removed, or renamed. |
 
 ---
@@ -291,9 +294,10 @@ the code, and change the doc in the same commit when the spec itself was wrong.
 | [ ] | `TRD.md` §16.3: schema changes via versioned migrations | No migration tool. Only `create_all()` and hand-applied `init.sql`. |
 | [ ] | `ARCHITECTURE.md` §8.1: tables `articles`/`links`/`missing_connections` with `id`/`title`/`url` | Same drift as TRD §5. |
 | [ ] | `PHASES.md` Phase 4 gate: "runs backend lint successfully" | No backend lint exists. No `pyproject.toml` / `ruff.toml` / `mypy.ini`. |
-| [ ] | `PHASES.md` Phases 1-4 unchecked | Substantially built already. Mark them against exit criteria, not task counts. |
+| [ ] | `PHASES.md` Phases 1-4 unchecked | Updated in `5773619` to match the implemented state. Re-verify against exit criteria, not task counts. |
 | [ ] | `PRD.md` §8 data model: `links`, `missing_connections` | Same drift as TRD §5. |
 | [ ] | `PRD.md` `Author: TBD`, §22 approval table `TBD` | Fill in the real owner; do not leave placeholders once known. |
+| [ ] | Pre-`97955b0` token values quoted in older docs | `--primary: #9fe870`, `--radius-xl: 24px`, and a `--positive` token no longer exist. Anything still citing them is stale. |
 
 ---
 
@@ -303,7 +307,7 @@ Run after any change that touches more than one file.
 
 | Done | Check | Command | CWD |
 | ---- | ----- | ------- | --- |
-| [ ] | Backend tests pass (59) | `pytest` | `backend` |
+| [ ] | Backend tests pass (68) | `pytest` | `backend` |
 | [ ] | Frontend lint passes | `npm run lint` | `frontend` |
 | [ ] | Frontend builds | `npm run build` | `frontend` |
 | [ ] | Models match SQL | diff `models.py` tables against `init.sql` | — |
@@ -314,7 +318,7 @@ Do **not** add a Python lint/typecheck step to this table — none exists.
 
 ---
 
-# 15. File-Count Reference — [x] verified 2026-09-26
+# 15. File-Count Reference — [x] verified 2026-09-26 (re-verified after `a48046f`, `97955b0`)
 
 | Done | Area | Count | Note |
 | ---- | ---- | ----: | ---- |
@@ -322,15 +326,16 @@ Do **not** add a Python lint/typecheck step to this table — none exists.
 | [x] | `backend/tests/` | 7 | 6 modules + `__init__.py` |
 | [x] | Backend config | 4 | `requirements.txt`, `pytest.ini`, `.env.example`, `.gitignore` |
 | [x] | `database/` | 3 | compose, SQL, readme |
-| [x] | `frontend/src/` | 31 | 14 `.jsx` + 13 `.module.css` + 4 others |
+| [x] | `frontend/src/` | 34 | 20 `.jsx` + 11 `.module.css` + 3 others |
 | [x] | Frontend config/entry/public | 9 | incl. `package-lock.json`, `.oxlintrc.json`, 2 SVGs |
-| [x] | `docs/` | 5 | PRD, TRD, PHASES, ARCHITECTURE, this file |
-| [x] | Repository root | 3 | `.gitignore`, `AGENTS.md`, `DESIGN.md` |
-| [x] | **Total** | **77** | |
+| [x] | `docs/` | 6 | PRD, TRD, PHASES, ARCHITECTURE, DESIGN, this file |
+| [x] | Repository root | 2 | `.gitignore`, `AGENTS.md` |
+| [x] | **Total** | **80** | |
 
-Frontend `src/` detail: `App.jsx`, `main.jsx`, `index.css`, `api/client.js` (4 others);
-9 components as 7 `.jsx` + 7 colocated `.module.css`; 7 pages as 5 `.jsx` + 2
-`.module.css`; plus `context/AnalysisContext.jsx` and `hooks/useArticleParam.js`.
+Frontend `src/` detail (34): 20 `.jsx` = `App.jsx`, `main.jsx`,
+`context/AnalysisContext.jsx`, 9 in `components/`, 8 in `pages/`; 11 `.module.css` = 9
+colocated with components + 2 with pages; 3 others = `index.css`, `api/client.js`,
+`hooks/useArticleParam.js`.
 
 Reconcile with `git ls-files` — this table is the thing to check against when a file is
 added, removed, or renamed.

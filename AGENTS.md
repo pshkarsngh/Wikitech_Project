@@ -23,15 +23,14 @@ backend/
   requirements.txt  pytest.ini  .env.example
 frontend/
   src/
-    pages/             HomePage, SearchPage, AnalysisPage, Missing/OneWay/Map, NotFound
-    components/        Layout, SearchBar, ResultLayout, Article*, Connection*, ui.jsx
+    pages/             HomePage, SearchPage, Analysis, Entities, Missing/OneWay/Map, NotFound
+    components/        Layout, SearchBar, ResultLayout, Article*, Connection*, Entity*, ui.jsx
     context/           AnalysisContext.jsx
     hooks/             useArticleParam.js
     api/               client.js
   index.html  vite.config.js  package.json  .oxlintrc.json  .env.example
 database/              docker-compose.yml, init.sql, README.md
-docs/                  PRD.md  TRD.md  PHASES.md  ARCHITECTURE.md
-DESIGN.md              design-system spec (tokens live in frontend/src/index.css)
+docs/                  PRD.md  TRD.md  PHASES.md  ARCHITECTURE.md  CHECKLIST.md  DESIGN.md
 ```
 
 ## 3. Commands
@@ -86,7 +85,7 @@ These are load-bearing. Breaking one breaks the tests or the deployment.
 * A database problem must never fail a request. `db.session_scope()` yields `None` when
   the engine is unavailable, and `repository` degrades to no-op persistence.
 * A partial answer must never masquerade as a complete one. `build_extracted_links`
-  (`services/analysis.py:238-244`) drops any link the existence check did not answer
+  (`services/analysis.py:278-284`) drops any link the existence check did not answer
   rather than guessing `exists`/`missing`.
 * `app.state` is the injection seam the test harness depends on. `main.py:33-36` only
   assigns when `getattr(app.state, ..., None) is None`; never assign unconditionally.
@@ -142,16 +141,23 @@ These are load-bearing. Breaking one breaks the tests or the deployment.
 
 ## 9. Design system
 
-`DESIGN.md` is the source of truth. The tokens are already materialised in
-`frontend/src/index.css:1-71` — edit them **there**, not in a component file.
+`docs/DESIGN.md` is the source of truth. The tokens are already materialised in
+`frontend/src/index.css:1-67` — edit them **there**, not in a component file. The
+palette was migrated to Miro, so the pre-migration values below are the ones in
+`index.css` now, not the older lime-on-white set.
 
-* `--primary: #9fe870` is the single accent. Do not introduce a second accent hue.
-* `--radius-xl: 24px` is canonical for large surfaces.
-* Elevation comes from surface contrast, not shadows. `--shadow-lg` exists and is used
-  in exactly one place (`SearchBar.module.css:91`, the results dropdown); do not spread
-  it further.
-* Success uses `--positive`. A green CTA is not a success indicator — do not reuse
-  `--primary` to mean "passing".
+* `--accent: #4262ff` is the interactive hue. `--primary: #1c1c1e` is the near-black
+  action colour, **not** an accent. Do not introduce a second interactive hue.
+* `--radius-xl: 16px`. The scale runs `--radius-xs` 4 → `--radius-xxxl` 28.
+* Elevation is a real shadow system now: `--shadow-sm`, `--shadow-lg`, `--shadow-focus`.
+  `--shadow-lg` is used in exactly one place (`SearchBar.module.css:102`, the results
+  dropdown); `--shadow-focus` is the focus ring.
+* Success is `--mutual: #00b473`. There is **no `--positive` token any more** — do not
+  reintroduce it. A green CTA is still not a success indicator.
+* Status hues: `--missing` red, `--oneway` yellow, `--mutual` green. Entity hues:
+  `--person` blue, `--place` coral. Each has a `*-soft` translucent companion.
+* Brand palette lives under `--brand-*` (`yellow`, `blue`, `coral`, `rose`, `teal`) with
+  `*-light` companions. These are for illustration surfaces, not for status meaning.
 
 ## 10. Two-file invariant
 
