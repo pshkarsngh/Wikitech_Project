@@ -106,25 +106,4 @@ def _replace_links(
         session.execute(pg_insert(ArticleLink).values(rows))
 
 
-def recent_analyses(limit: int = 20) -> list[dict[str, object]]:
-    """Latest analyses, newest first. Empty when persistence is disabled."""
 
-    with session_scope() as session:
-        if session is None:
-            return []
-        statement = (
-            select(AnalysisRun)
-            .order_by(AnalysisRun.created_at.desc())
-            .limit(max(1, min(limit, 100)))
-        )
-        return [
-            {
-                "id": run.id,
-                "seed_title": run.seed_title,
-                "total_links": run.total_links,
-                "total_missing": run.total_missing,
-                "total_one_way": run.total_one_way,
-                "created_at": run.created_at.isoformat() if run.created_at else None,
-            }
-            for run in session.execute(statement).scalars()
-        ]

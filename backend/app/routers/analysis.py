@@ -106,8 +106,4 @@ async def connection_map(
     return build_connection_map(graph, missing, one_way, types, settings)
 
 
-@router.get("/analyses/recent")
-async def recent_analyses(limit: int = Query(20, ge=1, le=100)) -> list[dict[str, object]]:
-    """Recently stored analyses. Requires a configured database."""
 
-    return repository.recent_analyses(limit=limit)
