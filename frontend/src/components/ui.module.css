@@ -34,15 +34,15 @@
 }
 
 .state_exists {
-  color: var(--positive-deep);
-  background: var(--primary-pale);
-  border-color: var(--positive);
+  color: var(--mutual);
+  background: var(--mutual-soft);
+  border-color: var(--mutual);
 }
 
 .state_missing {
   color: #fff;
-  background: var(--negative-bg);
-  border-color: var(--negative);
+  background: var(--missing);
+  border-color: var(--missing);
 }
 
 .statCard {

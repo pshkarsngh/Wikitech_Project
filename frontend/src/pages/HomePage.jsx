@@ -28,6 +28,7 @@ export default function HomePage() {
     <div className={styles.page}>
       <section className={styles.hero}>
         <h1 className={styles.title}>Find the Missing Connections</h1>
+        <h2 className={styles.description}> The Connected KnowledgeBase</h2>
         <p className={styles.description}>
           Discover people and places mentioned in articles that don&apos;t have their
           own article yet, or connections that only work in one direction.

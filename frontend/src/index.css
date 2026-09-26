@@ -1,86 +1,69 @@
 :root {
-  --bg: #e8ebe6; /* canvas-soft as default background */
-  --surface: #ffffff;
-  --surface-soft: #e8ebe6;
-  --surface-hover: #e2f6d5; /* primary-pale */
+  --bg: #ffffff;
+  --surface: #f7f8fa;
+  --surface-soft: #fafbfc;
+  --surface-hover: #eef0f3;
+  --surface-yellow: #fff8e0;
+  
   --canvas: #ffffff;
-  --canvas-soft: #e8ebe6;
-  --border: #e8ebe6;
-  --border-strong: #0e0f0c;
   
-  --text: #0e0f0c;
-  --text-soft: #454745;
-  --muted: #868685;
-
-  --accent: #9fe870;
-  --accent-strong: #cdffad;
-  --accent-soft: #e2f6d5;
+  --border: #e0e2e8;
+  --hairline-soft: #eef0f3;
+  --hairline-strong: #c7cad5;
   
-  --primary: #9fe870;
-  --on-primary: #0e0f0c;
-  --primary-active: #cdffad;
-  --primary-neutral: #c5edab;
-  --primary-pale: #e2f6d5;
+  --text: #1c1c1e;
+  --text-soft: #555a6a;
+  --muted: #a5a8b5;
 
-  --ink: #0e0f0c;
-  --ink-deep: #163300;
-  --body: #454745;
-  --mute: #868685;
+  --accent: #4262ff;
+  --accent-strong: #2a41b6;
+  --accent-soft: rgba(66, 98, 255, 0.15);
   
-  --positive: #2ead4b;
-  --positive-deep: #054d28;
-  --warning: #ffd11a;
-  --warning-deep: #b86700;
-  --warning-content: #4a3b1c;
-  --negative: #d03238;
-  --negative-deep: #a72027;
-  --negative-darkest: #a7000d;
-  --negative-bg: #320707;
-  --accent-orange: #ffc091;
-  --accent-cyan: #38c8ff;
+  --primary: #1c1c1e;
+  --on-primary: #ffffff;
+  --primary-active: #2c2c34;
 
+  --brand-yellow: #ffd02f;
+  --brand-blue: #4262ff;
+  --brand-coral: #ff9999;
+  --coral-light: #ffc6c6;
+  --brand-rose: #ffd8f4;
+  --rose-light: #fde0f0;
+  --brand-teal: #0fbcb0;
+  --teal-light: #c3faf5;
+
+  --ink: #1c1c1e;
+  --body: #1c1c1e;
+  
   --missing: #d03238;
-  --oneway: #ffd11a;
-  --mutual: #2ead4b;
-  --seed: #0e0f0c;
-  --person: #38c8ff;
-  --person-soft: rgba(56, 200, 255, 0.12);
-  --place: #ffc091;
-  --place-soft: rgba(255, 192, 145, 0.12);
+  --oneway: #ffd02f;
+  --mutual: #00b473;
+  --mutual-soft: rgba(0, 180, 115, 0.12);
+  --seed: #1c1c1e;
+  --person: #4262ff;
+  --person-soft: rgba(66, 98, 255, 0.12);
+  --place: #ff9999;
+  --place-soft: rgba(255, 153, 153, 0.12);
   --missing-soft: rgba(208, 50, 56, 0.08);
-  --danger: #a72027;
-  --danger-soft: #320707;
+  --danger: #e3c5c5;
+  --danger-soft: #fbd4d4;
 
   --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius: 12px; /* md */
-  --radius-lg: 16px;
-  --radius-xl: 24px;
-  --radius-xxl: 24px;
-  --radius-xxxl: 24px;
-  --radius-full: 9999px;
+  --radius-sm: 6px;
+  --radius: 8px; /* md */
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-xxl: 20px;
+  --radius-xxxl: 28px;
   --radius-pill: 9999px;
+  --radius-full: 9999px;
   
-  --shadow-lg: 0 8px 24px rgba(14, 15, 12, 0.08);
+  --shadow-sm: rgba(5, 0, 56, 0.06) 0px 4px 12px 0px;
+  --shadow-lg: rgba(5, 0, 56, 0.08) 0px 12px 32px -4px;
+  --shadow-focus: 0 0 0 2px #4262ff;
 
-  /* Horizontal page gutter. Tightened on small screens by the query below. */
-  --gutter: 1.5rem;
-  /* Control height for compact controls. Bumped to the 44px touch-target
-     floor on small screens and coarse pointers (mouse/trackpad stay compact). */
-  --tap: 36px;
-}
-
-@media (max-width: 720px) {
-  :root {
-    --gutter: 1rem;
-    --tap: 44px;
-  }
-}
-
-@media (pointer: coarse) {
-  :root {
-    --tap: 44px;
-  }
+  --gutter: 32px;
+  --tap: 44px;
 }
 
 *,
@@ -95,16 +78,17 @@ html {
 
 body {
   margin: 0;
-  font-family: 'Wise Sans', Inter, system-ui, -apple-system, sans-serif;
+  font-family: "Roobert PRO", "Inter", system-ui, -apple-system, sans-serif;
   font-size: 16px;
   line-height: 1.5;
-  color: var(--text);
-  background: var(--bg);
+  color: var(--body);
+  background: var(--canvas);
   -webkit-font-smoothing: antialiased;
 }
 
 a {
-  color: var(--accent);
+  color: var(--brand-blue);
+  text-decoration: none;
 }
 
 code {
@@ -114,11 +98,11 @@ code {
 h1,
 h2,
 h3 {
-  line-height: 1.15;
+  font-family: "Roobert PRO", "Inter", system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  font-weight: 500;
 }
 
-/* Long unbroken strings (article titles, URLs) must never force a
-   horizontal scrollbar on narrow viewports. */
 p,
 li,
 dd,
@@ -136,8 +120,8 @@ canvas {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 @media (prefers-reduced-motion: reduce) {

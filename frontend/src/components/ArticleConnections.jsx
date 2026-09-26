@@ -71,7 +71,7 @@ export default function ArticleConnections({ links, sourceTitle }) {
 
           <Legend
             items={[
-              { label: `EXISTS (${states.exists})`, color: 'var(--positive)' },
+              { label: `EXISTS (${states.exists})`, color: 'var(--mutual)' },
               { label: `MISSING (${states.missing})`, color: 'var(--missing)' },
             ]}
           />
