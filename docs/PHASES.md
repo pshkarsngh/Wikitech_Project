@@ -255,7 +255,7 @@ The source explicitly defines these five main screens.
 
 ## 7. Rollback / Revert
 
-* [ ] `[Name]` can revert UI changes to the last approved screen design.
+* [x] `Antigravity` can revert UI changes to the last approved screen design.
 
 ## 8. Exit Criteria
 
