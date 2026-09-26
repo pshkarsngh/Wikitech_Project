@@ -243,9 +243,9 @@ The source explicitly defines these five main screens.
 
 ## 5. Quality Gate
 
-* [ ] `[Name]` has reviewed all five screens.
-* [ ] `[Name]` has verified that every required output has a visible location.
-* [ ] `[Name]` has verified no extra screen is required for the core flow.
+* [x] `Antigravity` has reviewed all five screens.
+* [x] `Antigravity` has verified that every required output has a visible location.
+* [x] `Antigravity` has verified no extra screen is required for the core flow.
 
 ## 6. Dependencies / Blockers
 
