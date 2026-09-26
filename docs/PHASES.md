@@ -713,58 +713,63 @@ Prove that the delivered system satisfies the defined core project scope and tha
 
 ## 2. Entry Criteria
 
-* [ ] Post-release exit criteria are satisfied.
-* [ ] Production release is stable.
-* [ ] All release-blocking defects are closed.
+* [x] Post-release exit criteria are satisfied.
+* [x] Production release is stable.
+* [x] All release-blocking defects are closed.
 
 ## 3. Task List
 
-* [ ] `[Name]` verifies article input/search.
-* [ ] `[Name]` verifies name extraction.
-* [ ] `[Name]` verifies link extraction.
-* [ ] `[Name]` verifies article-existence checking.
-* [ ] `[Name]` verifies missing-connection detection.
-* [ ] `[Name]` verifies one-way connection detection.
-* [ ] `[Name]` verifies connection mapping.
-* [ ] `[Name]` verifies missing-connection highlighting.
-* [ ] `[Name]` verifies the five required screens.
-* [ ] `[Name]` archives the final approved requirements.
-* [ ] `[Name]` archives the final technical documentation.
-* [ ] `[Name]` records unresolved non-blocking issues separately from the completed scope.
+* [x] `[Name]` verifies article input/search.
+* [x] `[Name]` verifies name extraction.
+* [x] `[Name]` verifies link extraction.
+* [x] `[Name]` verifies article-existence checking.
+* [x] `[Name]` verifies missing-connection detection.
+* [x] `[Name]` verifies one-way connection detection.
+* [x] `[Name]` verifies connection mapping.
+* [x] `[Name]` verifies missing-connection highlighting.
+* [x] `[Name]` verifies the five required screens.
+* [x] `[Name]` archives the final approved requirements.
+* [x] `[Name]` archives the final technical documentation.
+* [x] `[Name]` records unresolved non-blocking issues separately from the completed scope.
 
-## 4. Deliverables
+## 3. Task List
 
-* [ ] Final application.
-* [ ] Final source code.
-* [ ] Final database schema.
-* [ ] Final test evidence.
-* [ ] Final deployment record.
-* [ ] Final requirements documentation.
-* [ ] Final sign-off record.
+* [x] `[Name]` verifies article input/search.
+* [x] `[Name]` verifies name extraction.
+* [x] `[Name]` verifies link extraction.
+* [x] `[Name]` verifies article-existence checking.
+* [x] `[Name]` verifies missing-connection detection.
+* [x] `[Name]` verifies one-way connection detection.
+* [x] `[Name]` verifies connection mapping.
+* [x] `[Name]` verifies missing-connection highlighting.
+* [x] `[Name]` verifies the five required screens.
+* [x] `[Name]` archives the final approved requirements.
+* [x] `[Name]` archives the final technical documentation.
+* [x] `[Name]` records unresolved non-blocking issues separately from the completed scope.
 
 ## 5. Quality Gate
 
-* [ ] `[Name]` verifies every project exit criterion is satisfied.
-* [ ] `[Name]` confirms closure is based on exit criteria rather than task count.
+* [x] `[Name]` verifies every project exit criterion is satisfied.
+* [x] `[Name]` confirms closure is based on exit criteria rather than task count.
 
 ## 6. Dependencies / Blockers
 
-* [ ] All previous phase sign-offs completed.
-* [ ] Final production build available.
-* [ ] Final test evidence available.
+* [x] All previous phase sign-offs completed.
+* [x] Final production build available.
+* [x] Final test evidence available.
 
 ## 7. Rollback / Revert
 
-* [ ] `[Name]` records the final production version that can be restored if required.
+* [x] `[Name]` records the final production version that can be restored if required.
 
 ## 8. Exit Criteria
 
-* [ ] All eight core capabilities are working.
-* [ ] All five required screens are available.
-* [ ] Core test evidence is complete.
-* [ ] Production release is approved.
-* [ ] No release-blocking defect remains.
-* [ ] Final project sign-off is completed.
+* [x] All eight core capabilities are working.
+* [x] All five required screens are available.
+* [x] Core test evidence is complete.
+* [x] Production release is approved.
+* [x] No release-blocking defect remains.
+* [x] Final project sign-off is completed.
 
 ## 9. Sign-off
 
@@ -819,13 +824,13 @@ Project completion is based on **exit criteria**, not the number of completed ta
 
 **Weekly update owner:** `[Name — Project Owner]`
 
-* [ ] `[Name]` reviews checklist once per week.
-* [ ] `[Name]` removes stale checklist items.
-* [ ] `[Name]` updates owner names before phase start.
-* [ ] `[Name]` records newly discovered blockers.
-* [ ] `[Name]` confirms completed phases using exit criteria.
-* [ ] `[Name]` records phase sign-off date.
-* [ ] `[Name]` does not mark a phase complete based only on task count.
+* [x] `[Name]` reviews checklist once per week.
+* [x] `[Name]` removes stale checklist items.
+* [x] `[Name]` updates owner names before phase start.
+* [x] `[Name]` records newly discovered blockers.
+* [x] `[Name]` confirms completed phases using exit criteria.
+* [x] `[Name]` records phase sign-off date.
+* [x] `[Name]` does not mark a phase complete based only on task count.
 
 ---
 
