@@ -654,14 +654,14 @@ Prove that the released application continues to perform the defined core workfl
 
 ## 3. Task List
 
-* [ ] `[Name]` verifies article search after release.
-* [ ] `[Name]` verifies article retrieval after release.
-* [ ] `[Name]` verifies missing connection detection after release.
-* [ ] `[Name]` verifies one-way connection detection after release.
-* [ ] `[Name]` verifies connection map after release.
-* [ ] `[Name]` verifies missing connection highlighting after release.
-* [ ] `[Name]` records production defects.
-* [ ] `[Name]` confirms any production defect is assigned to an owner.
+* [x] `[Name]` verifies article search after release.
+* [x] `[Name]` verifies article retrieval after release.
+* [x] `[Name]` verifies missing connection detection after release.
+* [x] `[Name]` verifies one-way connection detection after release.
+* [x] `[Name]` verifies connection map after release.
+* [x] `[Name]` verifies missing connection highlighting after release.
+* [x] `[Name]` records production defects.
+* [x] `[Name]` confirms any production defect is assigned to an owner.
 
 ## 4. Deliverables
 
