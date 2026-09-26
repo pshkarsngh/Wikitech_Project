@@ -470,7 +470,7 @@ classification without touching the network. Outstanding:
 * [x] Stable test build available.
 * [x] Test article data available.
 * [x] MediaWiki API available.
-* [ ] Test database available.
+* [x] Test database available.
 
 ## 7. Rollback / Revert
 
