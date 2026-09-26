@@ -184,4 +184,10 @@ class ConnectionMap(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+    # "A database is configured", which is a fact about this process.
     database_enabled: bool
+    # "A database is actually answering", which is a fact about the world. The two come
+    # apart: `create_engine` is lazy, so a wrong host or a wrong password still leaves
+    # an Engine object and this would report enabled. A deployment whose every write
+    # fails looks healthy otherwise, because persistence degrades to a silent no-op.
+    database_reachable: bool

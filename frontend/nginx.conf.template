@@ -1,0 +1,65 @@
+# nginx site config for the built SPA. Installed by frontend/Dockerfile as
+# /etc/nginx/templates/default.conf.template so the base image expands
+# ${API_UPSTREAM} from the environment before nginx starts.
+#
+# Two jobs, both load-bearing:
+#   1. serve the SPA, including deep links, which react-router owns;
+#   2. reverse-proxy /api to the backend on the same origin, so the browser
+#      never makes a cross-origin request and CORS stays out of the request
+#      path in a deployed environment.
+
+upstream fastapi {
+    server ${API_UPSTREAM};
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json
+               image/svg+xml application/manifest+json;
+
+    # Vite emits content-hashed filenames under /assets, so they are immutable
+    # and can be cached for a year. index.html is excluded from that treatment
+    # so a redeploy takes effect on the next load.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store";
+    }
+
+    # proxy_pass without a trailing path keeps the original /api/... URI, which
+    # is what the backend routes expect. A trailing slash here would strip the
+    # prefix and every route would 404.
+    location /api/ {
+        proxy_pass http://fastapi;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+
+        # One analysis fans out to the MediaWiki API in batches, so the first
+        # byte can take far longer than the 60s default. The backend aborts its
+        # own upstream work on WikipediaError; this only covers slow success.
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+    }
+
+    # Unknown paths are client-side routes, not missing files.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

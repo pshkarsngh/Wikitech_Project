@@ -91,6 +91,10 @@ def create_app() -> FastAPI:
             status="ok",
             version=settings.version,
             database_enabled=db.get_engine() is not None,
+            # Never let the probe decide the answer. Persistence is best effort, so a
+            # database that is down degrades the cache, not the request - and this
+            # endpoint still has to report that in a body rather than by failing.
+            database_reachable=db.ping(),
         )
 
     @app.get("/", include_in_schema=False)

@@ -1,0 +1,77 @@
+# Staging deployment. Same images as production, different host, different
+# database volume. Bring it up with:
+#
+#   cd deploy
+#   docker compose -f docker-compose.staging.yml up -d --build
+#
+# Staging is where Phase 6 UAT is executed, so it must be deployment-like:
+# built images, real nginx, real PostgreSQL, real network path to MediaWiki.
+# Nothing here is stubbed or mocked.
+
+name: find-missing-staging
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: find-missing-staging-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: find_missing
+      POSTGRES_USER: postgres
+      # Staging-only credential. Production supplies its own through the shell
+      # environment; see deploy/README.md.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-staging-only-change-me}
+    volumes:
+      - staging-pgdata:/var/lib/postgresql/data
+      # Runs on first volume creation only, exactly as in database/docker-compose.yml.
+      - ../database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d find_missing"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    # Not published. Only the api container needs to reach the database, and
+    # exposing it would put an unauthenticated port on the host for no reason.
+    expose:
+      - "5432"
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: find-missing-staging-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-staging-only-change-me}@db:5432/find_missing
+      # The SPA is served same-origin through nginx, so nothing cross-origin is
+      # expected. This is here for direct port access while debugging UAT.
+      CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
+      USER_AGENT: ${USER_AGENT:-FindTheMissingConnections/0.1 (https://github.com/pshkarsngh/Wikitech_Project)}
+    expose:
+      - "8000"
+    # Published on loopback only, so a UAT run can hit the API without going
+    # through nginx. This is how smoke_test.py is pointed at the backend alone.
+    ports:
+      - "127.0.0.1:8081:8000"
+
+  web:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: find-missing-staging-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Consumed by /etc/nginx/templates/default.conf.template at start-up.
+      API_UPSTREAM: api:8000
+    ports:
+      - "8080:80"
+
+volumes:
+  staging-pgdata:

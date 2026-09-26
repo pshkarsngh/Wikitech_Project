@@ -86,22 +86,40 @@ def _upsert_article(session: Session, article: ArticleDetail) -> Article | None:
     return session.get(Article, article.page_id)
 
 
+def _link_rows(source_page_id: int, links: list[ExtractedLink]) -> list[dict[str, object]]:
+    """One row per (source, target), which is what `uq_link` allows.
+
+    Two link occurrences in the article can resolve to the same article - one links the
+    canonical title directly, the other reaches it through a redirect, so
+    `resolve_titles` hands back the same page_id and the same canonical title twice.
+    `uq_link` is (source_page_id, target_normalized_title), so passing both through
+    aborts the whole transaction and the analysis is silently not cached at all. The
+    duplicates carry identical data, so keeping the first loses nothing.
+    """
+
+    rows: dict[str, dict[str, object]] = {}
+    for link in links:
+        key = normalize_title(link.title)
+        rows.setdefault(
+            key,
+            {
+                "source_page_id": source_page_id,
+                "target_title": link.title,
+                "target_normalized_title": key,
+                "target_page_id": link.page_id,
+                "exists": link.exists,
+            },
+        )
+    return list(rows.values())
+
+
 def _replace_links(
     session: Session, source_page_id: int, links: list[ExtractedLink]
 ) -> None:
     session.execute(
         delete(ArticleLink).where(ArticleLink.source_page_id == source_page_id)
     )
-    rows = [
-        {
-            "source_page_id": source_page_id,
-            "target_title": link.title,
-            "target_normalized_title": normalize_title(link.title),
-            "target_page_id": link.page_id,
-            "exists": link.exists,
-        }
-        for link in links
-    ]
+    rows = _link_rows(source_page_id, links)
     if rows:
         session.execute(pg_insert(ArticleLink).values(rows))
 

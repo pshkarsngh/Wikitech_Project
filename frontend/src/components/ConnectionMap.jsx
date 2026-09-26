@@ -12,6 +12,27 @@ const LEGEND_ITEMS = [
   { label: 'Missing entity', color: 'var(--missing)', dashed: true },
 ]
 
+// Cytoscape has its own style parser and never reads CSS custom properties: a
+// colour value is resolved by colour2tuple, which understands named colours,
+// hex, rgb() and hsl() only. Handing it 'var(--missing)' makes it drop the
+// property, so the graph would render in Cytoscape's defaults and nothing would
+// look missing. The tokens are therefore read off :root and passed as literals.
+const _tokenCache = new Map()
+
+function token(name) {
+  if (_tokenCache.has(name)) return _tokenCache.get(name)
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim()
+  if (!value) {
+    // Silently rendering with Cytoscape's default here is how the broken
+    // var() version survived; say so instead.
+    console.warn(`ConnectionMap: design token ${name} is not defined in index.css`)
+  }
+  _tokenCache.set(name, value)
+  return value
+}
+
 function elementsFor(map) {
   const elements = []
 
@@ -46,6 +67,12 @@ function elementsFor(map) {
 }
 
 function stylesheet() {
+  const mutual = token('--mutual')
+  const oneway = token('--oneway')
+  const missing = token('--missing')
+  const muted = token('--muted')
+  const canvas = token('--canvas')
+
   return [
     {
       selector: 'node',
@@ -54,14 +81,14 @@ function stylesheet() {
         'font-size': 10,
         'text-valign': 'bottom',
         'text-margin-y': 6,
-        color: '#3c4858',
-        'text-outline-color': '#ffffff',
+        color: token('--text-soft'),
+        'text-outline-color': canvas,
         'text-outline-width': 2,
         width: 22,
         height: 22,
-        'background-color': 'var(--mutual)',
+        'background-color': mutual,
         'border-width': 2,
-        'border-color': '#ffffff',
+        'border-color': canvas,
       },
     },
     {
@@ -71,28 +98,28 @@ function stylesheet() {
         height: 46,
         'font-size': 13,
         'font-weight': 'bold',
-        'background-color': 'var(--seed)',
-        color: '#1f2933',
+        'background-color': token('--seed'),
+        color: token('--text'),
       },
     },
     {
       selector: 'node[entityType = "person"]',
       style: {
-        'background-color': 'var(--person)',
+        'background-color': token('--person'),
         shape: 'ellipse',
       },
     },
     {
       selector: 'node[entityType = "place"]',
       style: {
-        'background-color': 'var(--place)',
+        'background-color': token('--place'),
         shape: 'round-rectangle',
       },
     },
     {
       selector: 'node[!exists]',
       style: {
-        'background-color': 'var(--missing)',
+        'background-color': missing,
         'border-style': 'dashed',
         'border-width': 3,
         shape: 'round-diamond',
@@ -105,23 +132,23 @@ function stylesheet() {
         'curve-style': 'bezier',
         'target-arrow-shape': 'triangle',
         'arrow-scale': 1.1,
-        'line-color': 'var(--mutual)',
-        'target-arrow-color': 'var(--mutual)',
+        'line-color': mutual,
+        'target-arrow-color': mutual,
       },
     },
     {
       selector: 'edge[status = "one-way"]',
       style: {
-        'line-color': 'var(--oneway)',
-        'target-arrow-color': 'var(--oneway)',
+        'line-color': oneway,
+        'target-arrow-color': oneway,
         'line-style': 'dashed',
       },
     },
     {
       selector: 'edge[status = "missing"]',
       style: {
-        'line-color': 'var(--missing)',
-        'target-arrow-color': 'var(--missing)',
+        'line-color': missing,
+        'target-arrow-color': missing,
         'line-style': 'dotted',
         'line-cap': 'round',
       },
@@ -129,15 +156,15 @@ function stylesheet() {
     {
       selector: 'edge[status = "unchecked"]',
       style: {
-        'line-color': 'var(--muted)',
-        'target-arrow-color': 'var(--muted)',
+        'line-color': muted,
+        'target-arrow-color': muted,
         opacity: 0.5,
       },
     },
     {
       selector: ':selected',
       style: {
-        'border-color': '#111827',
+        'border-color': token('--ink'),
         'border-width': 3,
       },
     },

@@ -1,0 +1,85 @@
+# Production deployment.
+#
+#   cp .env.production.example .env      # then edit every credential
+#   docker compose -f docker-compose.production.yml --env-file .env up -d
+#
+# The `build:` blocks are a first-deploy convenience, not the normal path: compose
+# builds a service only when its tagged image is absent locally, so once a release tag
+# exists on the host this file pulls nothing and rebuilds nothing. There is no registry
+# yet (see ROLLBACK.md §6), so the images live on the host and the tag is the only lever.
+# A rollback is therefore a *named* tag, never `latest` - with `latest` there is nothing
+# to go back to.
+
+name: find-missing
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: find-missing-db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      # No default. A production password that falls back to a known string is
+      # worse than a failed deploy, so compose refuses to start without it.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Only runs when the volume is first created. Apply by hand on every
+      # later schema change; see deploy/README.md.
+      - ../database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    expose:
+      - "5432"
+
+  api:
+    image: ${API_IMAGE:-find-missing-api}:${RELEASE_TAG:-latest}
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: find-missing-api
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # `connect_timeout` is load-bearing, not decoration. `create_all()` runs on the
+      # app's lifespan *before* uvicorn accepts connections, and a host that blackholes
+      # rather than refuses packets blocks on TCP SYN retries for about two minutes.
+      # The image healthcheck gives up at ~110s and `web` waits on it, so the whole
+      # deployment would come up broken with no log line explaining why. Five seconds
+      # turns an unbounded hang into a logged failure that the app then survives, which
+      # is the documented contract: a database problem must never fail a request.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?connect_timeout=5
+      # Wikimedia asks every client to identify itself, and a deployment should
+      # carry its own contact address rather than the repository URL.
+      USER_AGENT: ${USER_AGENT:?set USER_AGENT in .env}
+      # The SPA is served same-origin through nginx, so nothing cross-origin is
+      # expected. Set this only if something else calls the API directly.
+      CORS_ORIGINS: ${CORS_ORIGINS:-[]}
+    expose:
+      - "8000"
+
+  web:
+    image: ${WEB_IMAGE:-find-missing-web}:${RELEASE_TAG:-latest}
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: find-missing-web
+    restart: always
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Expanded into /etc/nginx/templates/default.conf.template at start-up.
+      API_UPSTREAM: api:8000
+    ports:
+      - "${WEB_PORT:-80}:80"
+
+volumes:
+  pgdata:

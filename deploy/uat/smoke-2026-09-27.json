@@ -1,0 +1,108 @@
+﻿{
+  "base_url": "http://localhost:8080",
+  "title": "Chandni Chowk",
+  "total": 14,
+  "passed": 14,
+  "failed": 0,
+  "duration_seconds": 48.08,
+  "checks": [
+    {
+      "name": "health endpoint responds",
+      "phase": "entry criteria",
+      "passed": true,
+      "detail": "version 0.1.0, database connected",
+      "duration_seconds": 0.08
+    },
+    {
+      "name": "database connected",
+      "phase": "entry criteria",
+      "passed": true,
+      "detail": "cache is active",
+      "duration_seconds": 0.0
+    },
+    {
+      "name": "article search returns results",
+      "phase": "task 1 - search",
+      "passed": true,
+      "detail": "10 results, first 'Chandni Chowk'",
+      "duration_seconds": 1.22
+    },
+    {
+      "name": "name resolves to one article",
+      "phase": "task 2 - open analysis",
+      "passed": true,
+      "detail": "resolved to 'Chandni Chowk' (page 571250)",
+      "duration_seconds": 0.41
+    },
+    {
+      "name": "analysis runs and counts agree",
+      "phase": "tasks 3-7 - analysis",
+      "passed": true,
+      "detail": "4 people, 142 places, 3 missing, 25 one-way",
+      "duration_seconds": 16.83
+    },
+    {
+      "name": "people are identified",
+      "phase": "task 3 - people",
+      "passed": true,
+      "detail": "4 people (0 without an article), listed: Amar Jawan Jyoti, Ghalib, Ghalib",
+      "duration_seconds": 0.0
+    },
+    {
+      "name": "places are identified",
+      "phase": "task 4 - places",
+      "passed": true,
+      "detail": "142 places (1 without an article), listed: Amsterdam, Ashok Nagar (Delhi), Ashok Vihar",
+      "duration_seconds": 0.0
+    },
+    {
+      "name": "links carry an existence state",
+      "phase": "task 5 - links",
+      "passed": true,
+      "detail": "444 links answered, 441 existing, 3 missing",
+      "duration_seconds": 0.0
+    },
+    {
+      "name": "missing connections are shown",
+      "phase": "task 6 - missing",
+      "passed": true,
+      "detail": "3 missing (1 typed), e.g. Archinomy, Central Baptist Church (Delhi), Gauri Shankar Temple",
+      "duration_seconds": 0.0
+    },
+    {
+      "name": "one-way connections are shown",
+      "phase": "task 7 - one-way",
+      "passed": true,
+      "detail": "25 one-way, e.g. 1951 Asian Games, 1982 Asian Games, 1987 Cricket World Cup",
+      "duration_seconds": 0.0
+    },
+    {
+      "name": "connection map is renderable",
+      "phase": "task 8 - map",
+      "passed": true,
+      "detail": "41 nodes, 40 edges, types ['other', 'person', 'place'], truncated",
+      "duration_seconds": 13.75
+    },
+    {
+      "name": "missing nodes are distinguishable",
+      "phase": "task 9 - highlight source",
+      "passed": true,
+      "detail": "3 missing nodes, edge statuses ['missing', 'one-way', 'unchecked']",
+      "duration_seconds": 15.31
+    },
+    {
+      "name": "result is self-describing",
+      "phase": "task 10 - readability",
+      "passed": true,
+      "detail": "'Chandni Chowk', 444 links checked, 3 missing, 25 one-way",
+      "duration_seconds": 0.0
+    },
+    {
+      "name": "error paths stay controlled",
+      "phase": "quality gate",
+      "passed": true,
+      "detail": "nonexistent article -> 404, empty title -> 422",
+      "duration_seconds": 0.48
+    }
+  ]
+}

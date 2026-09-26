@@ -9,6 +9,7 @@ Cytoscape connection map, and an optional PostgreSQL cache.
 
 ```
 backend/
+  Dockerfile           release image: venv, non-root, HEALTHCHECK on /api/health
   app/
     main.py            create_app(), lifespan, CORS, WikipediaError handler
     config.py          Settings (pydantic-settings), get_settings() @lru_cache
@@ -19,9 +20,12 @@ backend/
     dependencies.py    Annotated aliases: ClientDep, SettingsDep, TitleQuery, SearchQuery
     routers/           articles.py, analysis.py  (HTTP only)
     services/          analysis.py, classifier.py, mediawiki.py  (no FastAPI)
-  tests/               conftest.py, fake_wikipedia.py, smoke_live.py, test_*.py
+  tests/               conftest.py, fake_wikipedia.py, smoke_live.py,
+                      test_frontend_contract.py, test_*.py
   requirements.txt  pytest.ini  .env.example
 frontend/
+  Dockerfile           release image: vite build, served by nginx
+  nginx.conf.template installed as /etc/nginx/templates/default.conf.template
   src/
     pages/             HomePage, SearchPage, Analysis, Entities, Missing/OneWay/Map, NotFound
     components/        Layout, SearchBar, ResultLayout, Article*, Connection*, Entity*, ui.jsx
@@ -30,7 +34,16 @@ frontend/
     api/               client.js
   index.html  vite.config.js  vitest.config.js  package.json  .oxlintrc.json  .env.example
 database/              docker-compose.yml, init.sql, README.md
+deploy/
+  docker-compose.staging.yml     the Phase 6 staging stack
+  docker-compose.production.yml  the Phase 7 production stack, addressed by RELEASE_TAG
+  .env.production.example        every credential a production host must supply
+  smoke_test.py                  stdlib-only HTTP smoke test for a running deployment
+  uat/                           recorded smoke-test output
+  README.md                      how to run, migrate and roll back
 docs/                  PRD.md  TRD.md  PHASES.md  ARCHITECTURE.md  CHECKLIST.md  DESIGN.md
+                       UAT.md  ROLLBACK.md
+.github/workflows/    ci.yml  (pytest, oxlint, vite build, both images, schema drift)
 ```
 
 ## 3. Commands
@@ -39,7 +52,7 @@ Every command is CWD-sensitive. `backend/.env` uses a relative `env_file`, and
 `pytest.ini` sets `pythonpath = .`, so backend commands must run from `backend/`.
 
 | CWD | Command |
-| --- | --- |
+| --- | ------- |
 | `backend` | `python -m venv .venv` → `.venv\Scripts\activate` → `pip install -r requirements.txt` |
 | `backend` | `uvicorn app.main:app --reload` (serves on :8000) |
 | `backend` | `pytest` |
@@ -51,16 +64,25 @@ Every command is CWD-sensitive. `backend/.env` uses a relative `env_file`, and
 | `frontend` | `npm run build` |
 | `frontend` | `npm run lint` (oxlint) |
 | `frontend` | `npm run test` (vitest) |
+| `deploy` | `docker compose -f docker-compose.staging.yml up -d --build` (web :8080, api 127.0.0.1:8081) |
+| any | `python deploy/smoke_test.py --base-url http://localhost:8080 --expect-database` |
+| `deploy` | `docker compose -f docker-compose.production.yml --env-file .env up -d` |
+| `deploy` | `docker compose -f docker-compose.staging.yml down -v` (also drops the volume, so `init.sql` re-runs) |
+
+`pytest` needs a venv built from `requirements.txt`. Without `pytest-asyncio` and
+`httpx2` it does not fail — it aborts with an `INTERNALERROR` and runs **zero** tests,
+which reads as a pass. Install first, then trust the count.
 
 Does not exist — do not claim otherwise, do not add a substitute without asking:
 
 * Backend lint / format / typecheck. There is no `pyproject.toml`, `ruff.toml`,
   `mypy.ini`, or `.pre-commit-config.yaml` in the repo, and no such tool is installed.
-* CI. No `.github/`, no `Dockerfile`.
+* Browser automation. Nothing can open a page, so nothing can verify a rendered
+  pixel. `npm run test` (vitest, jsdom) asserts components and tokens, not a rendered
+  pixel. Any criterion that needs one is a human action.
 
-The 7 `# noqa` markers in the tree (`BLE001` in 4 app modules, `D107` in
-`tests/test_mediawiki.py`) are ruff/pydocstyle codes left over from a linter that is
-not installed. Keep them as written; they are inert comments, not a config.
+CI **does** exist: `.github/workflows/ci.yml` runs pytest, oxlint, `vite build`,
+builds and boots both images, and fails on `models.py` / `init.sql` table drift.
 
 ## 4. Stack
 
@@ -95,6 +117,15 @@ These are load-bearing. Breaking one breaks the tests or the deployment.
   the app boots and `/api/health` reports `database_enabled: false`. There is no
   history endpoint — `GET /api/analyses/recent` and `repository.recent_analyses` were
   removed in `c7d5344`.
+* In a deployment the SPA and the API share an origin. `frontend/nginx.conf.template`
+  serves the built assets and reverse-proxies `/api` to the backend, so the client's
+  relative `/api` never becomes a cross-origin request and CORS stays out of the
+  deployed request path. The backend's CORS middleware is for the dev server, where the
+  frontend is on :5173 and the backend on :8000. `proxy_pass` there must have **no**
+  trailing path, or the `/api` prefix is stripped and every route 404s.
+* Schema changes are additive only. There is no migration tool, so a removed or renamed
+  column could not be rolled back; `init.sql` is `CREATE ... IF NOT EXISTS` only and
+  contains no `DROP`. That is what makes `docs/ROLLBACK.md` §1 true.
 
 ## 6. Backend conventions
 
@@ -177,6 +208,16 @@ palette was migrated to Miro, so the pre-migration values below are the ones in
   `--person` blue, `--place` coral. Each has a `*-soft` translucent companion.
 * Brand palette lives under `--brand-*` (`yellow`, `blue`, `coral`, `rose`, `teal`) with
   `*-light` companions. These are for illustration surfaces, not for status meaning.
+* **Cytoscape is the one place a `var()` does not work.** It resolves style colours
+  through its own `color2tuple`, which accepts a named colour, hex, `rgb()` or `hsl()`
+  and nothing else. Handing it `var(--missing)` makes it *drop the property silently* —
+  no build error, no lint error, and the map renders in Cytoscape's defaults. That is
+  UAT-01, which shipped a connection map with no colours at all. `ConnectionMap.jsx`
+  therefore reads the tokens off `:root` with `getComputedStyle` and passes them as
+  literals. `LEGEND_ITEMS` may still use `var()`, because those values land in an inline
+  `style` attribute on a real DOM element, which is genuine CSS.
+  `test_frontend_contract.py::test_cytoscape_styles_never_use_css_custom_properties`
+  guards this.
 
 ## 10. Two-file invariant
 

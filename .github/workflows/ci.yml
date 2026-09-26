@@ -1,0 +1,169 @@
+name: CI
+
+# The release gate. Every job here is something that used to be a manual,
+# unverifiable claim: the test suite could not be run, lint was local-only, and
+# nothing proved the images built.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install requirements
+        # pytest-asyncio and httpx2 are not optional: without them the suite
+        # does not merely fail, it aborts with an INTERNALERROR and runs zero
+        # tests, which reads as a pass.
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        working-directory: backend
+        run: pytest -q
+
+  frontend:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  images:
+    name: Container images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          load: true
+          tags: find-missing-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          load: true
+          tags: find-missing-web:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Images start and the stack serves end to end
+        # Proves the images are runnable, not merely buildable. Nothing here
+        # reaches the network: the health endpoint and the SPA are both local.
+        run: |
+          docker network create ci-net
+
+          docker run -d --name ci-api --network ci-net find-missing-api:ci
+
+          for i in $(seq 1 30); do
+            if docker exec ci-api python -c \
+              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()" 2>/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec ci-api python -c \
+            "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8000/api/health').read().decode())"
+
+          docker run -d --name ci-web --network ci-net -p 8080:80 \
+            -e API_UPSTREAM=ci-api:8000 find-missing-web:ci
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+
+          curl -fsS http://127.0.0.1:8080/ | grep -q '<div id="root">'
+          echo "index.html served"
+
+          # A deep link must return the SPA, not a 404: react-router owns the URL.
+          curl -fsS http://127.0.0.1:8080/connection-map | grep -q '<div id="root">'
+          echo "SPA history fallback works"
+
+          # The nginx template must have expanded API_UPSTREAM, or /api 502s.
+          curl -fsS http://127.0.0.1:8080/api/health
+          echo
+          echo "API proxy works"
+
+          docker rm -f ci-web ci-api
+          docker network rm ci-net
+
+  schema:
+    name: Models match init.sql
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Table names agree across the two-file invariant
+        # models.py and database/init.sql describe one schema and are only
+        # ever updated together. This is the cheapest way to notice when they
+        # drift, which create_all() would otherwise hide in production.
+        run: |
+          python - <<'PY'
+          import re, pathlib, sys
+
+          models = pathlib.Path('backend/app/models.py').read_text(encoding='utf-8')
+          sql = pathlib.Path('database/init.sql').read_text(encoding='utf-8')
+
+          in_models = set(re.findall(r'__tablename__\s*=\s*"(\w+)"', models))
+          in_sql = set(re.findall(r'CREATE TABLE IF NOT EXISTS\s+(\w+)', sql, re.I))
+
+          missing_sql = in_models - in_sql
+          missing_models = in_sql - in_models
+          if missing_sql or missing_models:
+              print('models.py tables:', sorted(in_models))
+              print('init.sql tables: ', sorted(in_sql))
+              if missing_sql:
+                  print('in models.py but not init.sql:', sorted(missing_sql))
+              if missing_models:
+                  print('in init.sql but not models.py:', sorted(missing_models))
+              sys.exit(1)
+          print('tables agree:', ', '.join(sorted(in_models)))
+          PY

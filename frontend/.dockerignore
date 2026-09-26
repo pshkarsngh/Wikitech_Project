@@ -1,0 +1,23 @@
+# Without this, `COPY . .` in the Dockerfile ships the host's Windows
+# node_modules over the image's Linux one and the Vite build runs against the wrong
+# binaries. The same file also keeps local secrets and build output out of the build
+# context, where they would be readable in any intermediate layer.
+
+node_modules
+dist
+dist-ssr
+.vite
+
+# Local secrets. VITE_* values are compiled into the bundle at build time, so a stray
+# .env here would bake a developer's endpoint into a release image.
+.env
+.env.*
+!.env.example
+
+*.local
+*.log
+npm-debug.log*
+
+.git
+.gitignore
+.DS_Store

@@ -1,0 +1,22 @@
+# The Dockerfile only COPYs `requirements.txt` and `app/`, so nothing below reaches a
+# layer today. This file is here so that a future `COPY . .` cannot quietly ship the
+# developer's `.env` or a virtualenv into a published image.
+
+.venv
+venv
+.env
+.env.*
+!.env.example
+
+__pycache__
+*.py[cod]
+.pytest_cache
+
+# The release image deliberately excludes the suite; this keeps it out of the build
+# context too.
+tests
+
+*.log
+.git
+.gitignore
+.DS_Store

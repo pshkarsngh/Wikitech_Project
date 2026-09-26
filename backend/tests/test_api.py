@@ -23,10 +23,15 @@ def client() -> TestClient:
 def test_health(client: TestClient) -> None:
     response = client.get("/api/health")
     assert response.status_code == 200
+    # `database_reachable` is False here because the test settings set an empty
+    # DATABASE_URL, so there is no engine to reach. It is reported separately from
+    # `database_enabled` because an Engine object exists without ever having
+    # connected, and a deployment whose every write fails looks healthy otherwise.
     assert response.json() == {
         "status": "ok",
         "version": "0.1.0",
         "database_enabled": False,
+        "database_reachable": False,
     }
 
 
