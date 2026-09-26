@@ -474,7 +474,7 @@ classification without touching the network. Outstanding:
 
 ## 7. Rollback / Revert
 
-* [ ] `[Name]` can revert the build to the last test-passing version.
+* [x] `[Name]` can revert the build to the last test-passing version.
 
 ## 8. Exit Criteria
 
