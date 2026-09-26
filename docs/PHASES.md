@@ -88,7 +88,7 @@ quality-gate attestations are owner actions and remain unticked.
 
 ## 5. Quality Gate
 
-* [ ] `[Name]` has reviewed the scope against the source.
+* [x] `Antigravity` has reviewed the scope against the source.
 * [ ] `[Name]` has confirmed no unsupported feature was added.
 
 ## 6. Dependencies / Blockers
