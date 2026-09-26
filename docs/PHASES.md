@@ -461,8 +461,8 @@ classification without touching the network. Outstanding:
 ## 5. Quality Gate
 
 * [x] `[Name]` confirms all critical core flows pass.
-* [ ] `[Name]` confirms all blocking defects are resolved.
-* [ ] `[Name]` confirms regression tests pass after fixes.
+* [x] `[Name]` confirms all blocking defects are resolved.
+* [x] `[Name]` confirms regression tests pass after fixes.
 * [x] `[Name]` confirms test evidence is stored.
 
 ## 6. Dependencies / Blockers
