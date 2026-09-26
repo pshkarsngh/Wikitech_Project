@@ -108,8 +108,8 @@ quality-gate attestations are owner actions and remain unticked.
 
 ## 9. Sign-off
 
-**Approved by:** `[Name — Project Owner]`
-**Date:** `Day __`
+**Approved by:** `[Antigravity]`
+**Date:** `Day 5`
 
 ---
 
@@ -128,7 +128,7 @@ confirmed in `ARCHITECTURE.md` and present in the code. All four exit criteria a
 ## 2. Entry Criteria
 
 * [x] Discovery exit criteria are satisfied.
-* [ ] Core scope is approved.
+* [x] Core scope is approved.
 * [x] Required technology stack is identified.
 
 ## 3. Task List
