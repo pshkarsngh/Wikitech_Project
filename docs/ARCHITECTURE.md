@@ -509,6 +509,15 @@ Secrets must be provided through environment configuration.
 
 > **TODO — incomplete section.** The source text for section 11 onward was truncated before being received. Add the remaining sections (deployment/infrastructure, and anything that followed) here.
 
+## 11.1 Rollback / Revert Strategy
+
+If any selected component fails to support the core workflow during development or staging, the following revert strategy will be employed to ensure progress is not blocked:
+
+1. **Graph Visualization (Cytoscape.js):** If Cytoscape.js proves unsuitable for the connection map, we will fall back to **D3.js** or a static HTML list visualization until a suitable library is identified.
+2. **Database (PostgreSQL):** The database is only used for best-effort caching and recent analyses. If the PostgreSQL dependency becomes a blocker, we will fall back to an in-memory cache (or SQLite) and disable persistence to keep the core API functional.
+3. **API Framework (FastAPI):** If FastAPI presents insurmountable issues, the backend logic is decoupled enough to revert to a standard Flask or standard library WSGI application.
+4. **Article Source (MediaWiki API):** We rely exclusively on the MediaWiki API. If a specific API endpoint (e.g., page existence or links) fails to meet needs, we will revert to using alternative endpoints within the MediaWiki API suite (like Action API vs REST API) rather than scraping HTML.
+
 ---
 
 # 12. Open Questions

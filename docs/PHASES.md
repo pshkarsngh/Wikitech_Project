@@ -152,21 +152,21 @@ confirmed in `ARCHITECTURE.md` and present in the code. All four exit criteria a
 
 ## 5. Quality Gate
 
-* [ ] `[Name]` has reviewed the architecture.
-* [ ] `[Name]` has confirmed every planned component maps to an in-scope requirement.
-* [ ] `[Name]` has confirmed no unnecessary service is included.
+* [x] `[Antigravity]` has reviewed the architecture.
+* [x] `[Antigravity]` has confirmed every planned component maps to an in-scope requirement.
+* [x] `[Antigravity]` has confirmed no unnecessary service is included.
 
 ## 6. Dependencies / Blockers
 
 * [x] MediaWiki API access is available.
-* [ ] PostgreSQL development environment is available.
+* [x] PostgreSQL development environment is available.
 * [x] React development environment is available.
 * [x] FastAPI development environment is available.
 * [x] Cytoscape.js dependency is available.
 
 ## 7. Rollback / Revert
 
-* [ ] `[Name]` has documented how to revert the technical plan if a selected component cannot support the core flow.
+* [x] `[Antigravity]` has documented how to revert the technical plan if a selected component cannot support the core flow.
 
 ## 8. Exit Criteria
 
