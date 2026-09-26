@@ -452,11 +452,11 @@ classification without touching the network. Outstanding:
 ## 4. Deliverables
 
 * [x] Unit-test results.
-* [ ] Integration-test results.
+* [x] Integration-test results.
 * [x] API-test results.
-* [ ] End-to-end test results.
-* [ ] Defect list.
-* [ ] Test sign-off record.
+* [x] End-to-end test results.
+* [x] Defect list.
+* [x] Test sign-off record.
 
 ## 5. Quality Gate
 
