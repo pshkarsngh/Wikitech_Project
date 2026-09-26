@@ -686,9 +686,9 @@ Prove that the released application continues to perform the defined core workfl
 
 ## 8. Exit Criteria
 
-* [ ] Post-release core-flow verification passes.
-* [ ] No unresolved release-blocking issue remains.
-* [ ] Production state is stable enough for project closure.
+* [x] Post-release core-flow verification passes.
+* [x] No unresolved release-blocking issue remains.
+* [x] Production state is stable enough for project closure.
 
 ## 9. Sign-off
 
