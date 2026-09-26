@@ -676,9 +676,9 @@ Prove that the released application continues to perform the defined core workfl
 
 ## 6. Dependencies / Blockers
 
-* [ ] Production environment.
-* [ ] MediaWiki API.
-* [ ] Production database.
+* [x] Production environment.
+* [x] MediaWiki API.
+* [x] Production database.
 
 ## 7. Rollback / Revert
 
