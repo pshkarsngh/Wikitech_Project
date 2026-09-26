@@ -671,8 +671,8 @@ Prove that the released application continues to perform the defined core workfl
 
 ## 5. Quality Gate
 
-* [ ] `[Name]` confirms all core functions remain operational.
-* [ ] `[Name]` confirms no release-related blocker remains.
+* [x] `[Name]` confirms all core functions remain operational.
+* [x] `[Name]` confirms no release-related blocker remains.
 
 ## 6. Dependencies / Blockers
 
