@@ -28,7 +28,7 @@ frontend/
     context/           AnalysisContext.jsx
     hooks/             useArticleParam.js
     api/               client.js
-  index.html  vite.config.js  package.json  .oxlintrc.json  .env.example
+  index.html  vite.config.js  vitest.config.js  package.json  .oxlintrc.json  .env.example
 database/              docker-compose.yml, init.sql, README.md
 docs/                  PRD.md  TRD.md  PHASES.md  ARCHITECTURE.md  CHECKLIST.md  DESIGN.md
 ```
@@ -50,12 +50,12 @@ Every command is CWD-sensitive. `backend/.env` uses a relative `env_file`, and
 | `frontend` | `npm run dev` (:5173, proxies `/api` → `http://127.0.0.1:8000`) |
 | `frontend` | `npm run build` |
 | `frontend` | `npm run lint` (oxlint) |
+| `frontend` | `npm run test` (vitest) |
 
 Does not exist — do not claim otherwise, do not add a substitute without asking:
 
 * Backend lint / format / typecheck. There is no `pyproject.toml`, `ruff.toml`,
   `mypy.ini`, or `.pre-commit-config.yaml` in the repo, and no such tool is installed.
-* Frontend tests. No `test` script, no runner, no test files.
 * CI. No `.github/`, no `Dockerfile`.
 
 The 7 `# noqa` markers in the tree (`BLE001` in 4 app modules, `D107` in
@@ -66,8 +66,9 @@ not installed. Keep them as written; they are inert comments, not a config.
 
 Backend: Python 3.12, FastAPI, uvicorn, pydantic 2 + pydantic-settings, httpx,
 SQLAlchemy 2 (sync `Session`) with psycopg 3, pytest + pytest-asyncio.
-Frontend: Vite 8, React 19, react-router-dom 7, cytoscape 3, oxlint. Plain JSX — there is
-no TypeScript and no `tsconfig.json`; `@types/react*` are installed but unused.
+Frontend: Vite 8, React 19, react-router-dom 7, cytoscape 3, oxlint, vitest 3 +
+@testing-library/react + jsdom. Plain JSX — there is no TypeScript and no `tsconfig.json`;
+`@types/react*` are installed but unused.
 
 ## 5. Architecture invariants
 
@@ -127,6 +128,8 @@ These are load-bearing. Breaking one breaks the tests or the deployment.
 
 ## 8. Testing rules
 
+Backend (pytest):
+
 * `asyncio_mode = auto` — write bare `async def test_*`, never
   `@pytest.mark.asyncio`.
 * Never touch the network in tests. Use `FakeWikipediaClient` from
@@ -139,6 +142,21 @@ These are load-bearing. Breaking one breaks the tests or the deployment.
   renaming a schema field breaks them.
 * Test names are behavioural sentences:
   `test_one_way_target_without_reverse_link_is_reported_as_one_way`.
+
+Frontend (vitest, `npm run test`):
+
+* Colocate as `*.test.jsx` next to the component. `vitest.config.js` is separate from
+  `vite.config.js` on purpose — never merge them, the dev proxy is load-bearing.
+* Import `describe`/`it`/`expect` from `vitest`; globals are off.
+* Call `afterEach(cleanup)` explicitly. Testing Library only self-registers cleanup when
+  the runner exposes a global `afterEach`, which this config does not.
+* `esbuild: { jsx: 'automatic' }` is required. Test files import no React binding, so the
+  classic transform would throw `React is not defined`.
+* jsdom gives `import.meta.url` a non-`file:` scheme. Resolve paths from `process.cwd()`,
+  which vitest sets to the directory holding `vitest.config.js`.
+* `src/designTokens.test.js` is the guard for §9: it fails if any `var(--...)` under
+  `frontend/src` has no definition in `index.css`. That is the regression the Miro palette
+  migration caused, and it is invisible to both the build and the component tests.
 
 ## 9. Design system
 

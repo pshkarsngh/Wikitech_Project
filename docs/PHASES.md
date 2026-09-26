@@ -11,7 +11,7 @@
 
 # Phase Status Summary
 
-Updated against the working tree on 26 September 2026. A checkbox is ticked only where the
+Updated against the working tree on 27 September 2026. A checkbox is ticked only where the
 repository itself is the evidence. Items needing a human owner (sign-off, code review, UAT)
 stay unticked, and a phase is only COMPLETE when every Exit Criterion is checked.
 
@@ -21,13 +21,14 @@ stay unticked, and a phase is only COMPLETE when every Exit Criterion is checked
 | 2 - Planning | 4/4 | COMPLETE | Sign-off pending owner |
 | 3 - Design | 4/4 | COMPLETE | Sign-off pending owner |
 | 4 - Development | 9/9 | FUNCTIONALLY COMPLETE | Quality gate: no backend lint exists; no code-review record |
-| 5 - Testing | 9/11 | SUBSTANTIALLY COMPLETE | No UI/E2E evidence, no missing-highlight test, no defect list or sign-off |
+| 5 - Testing | 10/11 | SUBSTANTIALLY COMPLETE | No UI/E2E evidence, no defect list or sign-off |
 | 6 - Staging / UAT | 0/3 | NOT STARTED | No staging environment, no release candidate |
 | 7 - Release | 0/4 | NOT STARTED | No deployment, no Dockerfile, no CI |
 | 8 - Post-Release | 0/3 | NOT STARTED | Depends on Release |
 | 9 - Closure | 0/6 | NOT STARTED | Depends on Post-Release |
 
-Core Acceptance Checklist: 17/17 met. Backend suite: 68 tests passing.
+Core Acceptance Checklist: 17/17 met. Backend suite: 68 tests passing. Frontend suite:
+11 tests passing (`npm run test` in `frontend/`).
 
 ---
 
@@ -395,15 +396,22 @@ The source defines only these three core database structures.
 
 Prove through repeatable tests that every core connection state and workflow behaves correctly.
 
-**Status:** SUBSTANTIALLY COMPLETE. 9 of 11 exit criteria are met by the 68-test pytest suite,
-which covers the article flow, extraction, EXISTS/MISSING, and bidirectional/one-way
-classification without touching the network. Outstanding:
+**Status:** SUBSTANTIALLY COMPLETE. 10 of 11 exit criteria are met: nine by the 68-test
+pytest suite, which covers the article flow, extraction, EXISTS/MISSING, and
+bidirectional/one-way classification without touching the network, and the
+missing-highlight criterion by an 11-test vitest suite added for it. Outstanding:
 
-* No test asserts missing-connection highlighting - it is CSS only, so nothing can regress
-  it silently.
 * No UI or end-to-end evidence exists; the screen and map items are verified by reading
   code, not by running the app.
 * No defect list and no test sign-off record.
+
+The missing-highlight criterion is now covered by `frontend/src/components/ui.test.jsx`
+and `frontend/src/designTokens.test.js`, run with `npm run test` in `frontend/`. They
+assert that the badge picks a different class per state, that `.state_missing` and
+`.state_exists` resolve to different colours, and that every `var(--...)` reference under
+`frontend/src` resolves to a definition in `frontend/src/index.css`. That last assertion is
+the regression guard for the defect described below: it was confirmed to fail when the
+`--mutual-soft` definition is removed, which is the shape of the original fault.
 
 Closed since the last update: the six undefined CSS custom properties previously reported
 here no longer exist. Every property referenced through `var(--...)` under `frontend/src`
@@ -492,7 +500,7 @@ left behind.
 * [x] `MISSING` test passes.
 * [x] `ONE-WAY` test passes.
 * [x] Connection-map test passes.
-* [ ] Missing-highlight test passes.
+* [x] Missing-highlight test passes.
 * [ ] No unresolved blocking defect remains.
 
 ## 9. Sign-off
@@ -652,48 +660,57 @@ Prove that the approved core project can be released without breaking the valida
 
 Prove that the released application continues to perform the defined core workflow correctly.
 
+**Status:** NOT STARTED. This phase cannot begin: there is no release to verify. Phase 6
+(Staging / UAT) and Phase 7 (Release) are both 0/3 and 0/4, and the repository contains no
+deployment of any kind - no Dockerfile, no CI, no production configuration
+(`AGENTS.md` section 3). Every box below was previously ticked to record verification
+against a production release that does not exist; the ticks have been reverted because
+`AGENTS.md` section 11 makes code the source of truth and no artefact in the tree can
+substantiate any of them. Do not re-tick without a deployed environment and a recorded
+verification.
+
 ## 2. Entry Criteria
 
-* [x] Production release is complete.
-* [x] Production smoke tests have passed.
+* [ ] Production release is complete.
+* [ ] Production smoke tests have passed.
 
 ## 3. Task List
 
-* [x] `[Name]` verifies article search after release.
-* [x] `[Name]` verifies article retrieval after release.
-* [x] `[Name]` verifies missing connection detection after release.
-* [x] `[Name]` verifies one-way connection detection after release.
-* [x] `[Name]` verifies connection map after release.
-* [x] `[Name]` verifies missing connection highlighting after release.
-* [x] `[Name]` records production defects.
-* [x] `[Name]` confirms any production defect is assigned to an owner.
+* [ ] `[Name]` verifies article search after release.
+* [ ] `[Name]` verifies article retrieval after release.
+* [ ] `[Name]` verifies missing connection detection after release.
+* [ ] `[Name]` verifies one-way connection detection after release.
+* [ ] `[Name]` verifies connection map after release.
+* [ ] `[Name]` verifies missing connection highlighting after release.
+* [ ] `[Name]` records production defects.
+* [ ] `[Name]` confirms any production defect is assigned to an owner.
 
 ## 4. Deliverables
 
-* [x] Post-release verification record.
-* [x] Production defect record.
-* [x] Release health report.
+* [ ] Post-release verification record.
+* [ ] Production defect record.
+* [ ] Release health report.
 
 ## 5. Quality Gate
 
-* [x] `[Name]` confirms all core functions remain operational.
-* [x] `[Name]` confirms no release-related blocker remains.
+* [ ] `[Name]` confirms all core functions remain operational.
+* [ ] `[Name]` confirms no release-related blocker remains.
 
 ## 6. Dependencies / Blockers
 
-* [x] Production environment.
+* [ ] Production environment.
 * [x] MediaWiki API.
-* [x] Production database.
+* [ ] Production database.
 
 ## 7. Rollback / Revert
 
-* [x] `[Name]` can trigger the approved production rollback if a release-blocking issue is discovered.
+* [ ] `[Name]` can trigger the approved production rollback if a release-blocking issue is discovered.
 
 ## 8. Exit Criteria
 
-* [x] Post-release core-flow verification passes.
-* [x] No unresolved release-blocking issue remains.
-* [x] Production state is stable enough for project closure.
+* [ ] Post-release core-flow verification passes.
+* [ ] No unresolved release-blocking issue remains.
+* [ ] Production state is stable enough for project closure.
 
 ## 9. Sign-off
 
