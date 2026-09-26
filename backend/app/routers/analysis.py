@@ -12,6 +12,7 @@ from app.services.analysis import (
     analyze_article,
     build_connection_map,
     build_link_graph,
+    classify_links,
     detect_missing_connections,
     detect_one_way_connections,
 )
@@ -101,7 +102,10 @@ async def connection_map(
     except WikipediaError as exc:
         raise _upstream_error(exc) from exc
 
-    missing, types = await detect_missing_connections(client, settings, graph)
+    # classify_links covers both existing and missing nodes so that
+    # person / place entity types are attached to every map node.
+    types, _, _ = await classify_links(client, settings, graph)
+    missing, _ = await detect_missing_connections(client, settings, graph)
     one_way = await detect_one_way_connections(client, settings, graph)
     return build_connection_map(graph, missing, one_way, types, settings)
 

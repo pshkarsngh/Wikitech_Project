@@ -6,9 +6,10 @@ import styles from './ConnectionMap.module.css'
 
 const LEGEND_ITEMS = [
   { label: 'Source article', color: 'var(--seed)' },
-  { label: 'Two-way connection', color: 'var(--mutual)' },
-  { label: 'One-way connection', color: 'var(--oneway)' },
-  { label: 'Missing article', color: 'var(--missing)' },
+  { label: 'Article node', color: 'var(--mutual)' },
+  { label: 'Person node', color: 'var(--person)' },
+  { label: 'Place node', color: 'var(--place)' },
+  { label: 'Missing entity', color: 'var(--missing)', dashed: true },
 ]
 
 function elementsFor(map) {
@@ -22,6 +23,7 @@ function elementsFor(map) {
         label: node.label,
         exists: node.exists,
         isSeed: node.is_seed,
+        entityType: node.entity_type,
         url: node.url,
       },
     })
@@ -71,6 +73,20 @@ function stylesheet() {
         'font-weight': 'bold',
         'background-color': 'var(--seed)',
         color: '#1f2933',
+      },
+    },
+    {
+      selector: 'node[entityType = "person"]',
+      style: {
+        'background-color': 'var(--person)',
+        shape: 'ellipse',
+      },
+    },
+    {
+      selector: 'node[entityType = "place"]',
+      style: {
+        'background-color': 'var(--place)',
+        shape: 'round-rectangle',
       },
     },
     {

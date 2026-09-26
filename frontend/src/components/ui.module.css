@@ -242,6 +242,12 @@
   border-radius: 50%;
 }
 
+.swatch_dashed {
+  border-style: dashed;
+  border-radius: 3px;
+  transform: rotate(45deg);
+}
+
 @media (max-width: 720px) {
   .card {
     padding: 1rem;

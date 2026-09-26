@@ -351,6 +351,9 @@ def build_connection_map(
         info = existing_by_key.get(key)
         node_id = f"page:{key}" if info and info.page_id else f"missing:{key}"
         label = (info.title or info.requested) if info else missing_labels.get(key, key)
+        # Use the types dict for both existing and missing nodes so that
+        # person and place nodes render with a distinct colour on the map.
+        entity_type = types.get(info.requested if info else key, classifier.OTHER)
         nodes.append(
             MapNode(
                 id=node_id,
@@ -358,9 +361,7 @@ def build_connection_map(
                 page_id=info.page_id if info else None,
                 url=info.url if info else None,
                 exists=not is_missing,
-                entity_type=missing_types.get(key, classifier.OTHER)
-                if is_missing
-                else classifier.OTHER,
+                entity_type=entity_type,
             )
         )
 

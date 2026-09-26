@@ -99,7 +99,7 @@ export function Legend({ items }) {
       {items.map((item) => (
         <li key={item.label} className={styles.legendItem}>
           <span
-            className={styles.swatch}
+            className={`${styles.swatch} ${item.dashed ? styles.swatch_dashed : ''}`}
             style={{ background: item.color, borderColor: item.border ?? item.color }}
           />
           {item.label}

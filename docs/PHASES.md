@@ -436,11 +436,11 @@ classification without touching the network. Outstanding:
 
 ### Map
 
-* [ ] `[Name]` verifies article nodes appear.
-* [ ] `[Name]` verifies person nodes appear.
-* [ ] `[Name]` verifies place nodes appear.
-* [ ] `[Name]` verifies missing entities appear.
-* [ ] `[Name]` verifies missing entities are highlighted.
+* [x] `[Name]` verifies article nodes appear.
+* [x] `[Name]` verifies person nodes appear.
+* [x] `[Name]` verifies place nodes appear.
+* [x] `[Name]` verifies missing entities appear.
+* [x] `[Name]` verifies missing entities are highlighted.
 
 ### Result
 
