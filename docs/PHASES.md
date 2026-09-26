@@ -665,9 +665,9 @@ Prove that the released application continues to perform the defined core workfl
 
 ## 4. Deliverables
 
-* [ ] Post-release verification record.
-* [ ] Production defect record.
-* [ ] Release health report.
+* [x] Post-release verification record.
+* [x] Production defect record.
+* [x] Release health report.
 
 ## 5. Quality Gate
 
