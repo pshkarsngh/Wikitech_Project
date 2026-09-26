@@ -404,8 +404,13 @@ classification without touching the network. Outstanding:
 * No UI or end-to-end evidence exists; the screen and map items are verified by reading
   code, not by running the app.
 * No defect list and no test sign-off record.
-* A live defect is open: six CSS custom properties are referenced but no longer defined
-  after the palette change, so the EXISTS and MISSING badges lose their colour.
+
+Closed since the last update: the six undefined CSS custom properties previously reported
+here no longer exist. Every property referenced through `var(--...)` under `frontend/src`
+resolves to a definition in `frontend/src/index.css`, and the EXISTS and MISSING badges
+both resolve to defined tokens (`--mutual` / `--mutual-soft` and `--missing` in
+`frontend/src/components/ui.module.css`). The palette migration closed it; this note was
+left behind.
 
 ## 2. Entry Criteria
 
