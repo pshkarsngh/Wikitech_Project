@@ -649,8 +649,8 @@ Prove that the released application continues to perform the defined core workfl
 
 ## 2. Entry Criteria
 
-* [ ] Production release is complete.
-* [ ] Production smoke tests have passed.
+* [x] Production release is complete.
+* [x] Production smoke tests have passed.
 
 ## 3. Task List
 
