@@ -249,7 +249,7 @@ The source explicitly defines these five main screens.
 
 ## 6. Dependencies / Blockers
 
-* [ ] Approved project scope.
+* [x] Approved project scope.
 * [x] Approved system flow.
 * [x] Connection result states defined.
 
