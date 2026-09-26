@@ -143,7 +143,7 @@ No router builds SQL. `sqlalchemy` must never be imported here.
 | ---- | ---- | --------- | ------------------ |
 | [ ] | `backend/app/routers/__init__.py` | Re-exports both routers. | — |
 | [ ] | `backend/app/routers/articles.py` | `GET /api/articles/search` (line 33), `GET /api/articles/find` (53), `GET /api/article` (65), `GET /api/article/links` (75), `GET /api/articles/resolve` (107) | Note the param split: `title=` for `/api/article*`, `q=` for search/find, repeated `titles=` for resolve. `_upstream_error` at line 23 mirrors the copy in `analysis.py` — keep both in sync. |
-| [ ] | `backend/app/routers/analysis.py` | `POST /api/analyze` (line 42), `GET /api/connections/missing` (57), `GET /api/connections/one-way` (76), `GET /api/connections/map` (94), `GET /api/analyses/recent` (110) | `_upstream_error` at line 32 — a deliberate duplicate of the one in `articles.py`, not a shared helper. `/api/analyses/recent` returns `[]` when no database is configured. |
+| [ ] | `backend/app/routers/analysis.py` | `POST /api/analyze` (line 42), `GET /api/connections/missing` (57), `GET /api/connections/one-way` (76), `GET /api/connections/map` (94). **No history endpoint** — `GET /api/analyses/recent` was removed in `c7d5344`. | `_upstream_error` at line 32 — a deliberate duplicate of the one in `articles.py`, not a shared helper. `repository.recent_analyses` was deleted in the same commit; `AnalysisRun` is still written by `store_analysis`, never read back. |
 
 ---
 
@@ -163,6 +163,13 @@ Zero `fastapi` imports are permitted in this directory.
 # 5. Backend — Tests
 
 68 tests total: 25 + 19 + 24. Re-verified 2026-09-26 after `a48046f` (was 59: 16 + 19 + 24).
+
+**The suite does not currently run green in this environment.** `pytest-asyncio` and
+`httpx2` are listed in `requirements.txt` but are **not installed**, so
+`asyncio_mode = auto` never applies and 43 of the 68 tests fail with 25 passing. This is
+a missing-dependency problem, not a code regression. Run
+`pip install -r requirements.txt` from `backend/` before trusting any test result.
+Until then, `pytest --collect-only` is the only reliable count.
 
 | Done | File | Contents | Check when touched |
 | ---- | ---- | -------- | ------------------ |
@@ -292,6 +299,7 @@ the code, and change the doc in the same commit when the spec itself was wrong.
 | [ ] | `TRD.md` §4.2: all versions "TBD" | Actually constrained in `requirements.txt` / `package.json`. |
 | [ ] | `TRD.md` Appendix C: `backend/{api,services,database,wikipedia}`, `tests/{unit,integration,e2e}` | Does not exist. See `AGENTS.md` §2 for the real layout. |
 | [ ] | `TRD.md` §16.3: schema changes via versioned migrations | No migration tool. Only `create_all()` and hand-applied `init.sql`. |
+| [ ] | No document mentions a history endpoint | `GET /api/analyses/recent` was removed in `c7d5344`. Do not re-add it, and do not document it. |
 | [ ] | `ARCHITECTURE.md` §8.1: tables `articles`/`links`/`missing_connections` with `id`/`title`/`url` | Same drift as TRD §5. |
 | [ ] | `PHASES.md` Phase 4 gate: "runs backend lint successfully" | No backend lint exists. No `pyproject.toml` / `ruff.toml` / `mypy.ini`. |
 | [ ] | `PHASES.md` Phases 1-4 unchecked | Updated in `5773619` to match the implemented state. Re-verify against exit criteria, not task counts. |
@@ -315,6 +323,16 @@ Run after any change that touches more than one file.
 | [ ] | No secrets staged | `git status` + `git diff` | — |
 
 Do **not** add a Python lint/typecheck step to this table — none exists.
+
+**Blocker as of 2026-09-26:** the first row cannot pass. `pytest-asyncio` and `httpx2`
+are in `requirements.txt` but absent from the environment, so plain `pytest` dies on
+`Unknown config option: asyncio_default_fixture_loop_scope` (via `filterwarnings =
+error`) and, with that warning suppressed, reports **43 failed / 25 passed**. Install the
+requirements first. `pytest --collect-only` still works and reports 68.
+
+Also note `filterwarnings = error` turns the `PytestConfigWarning` above into a hard
+`INTERNALERROR` that runs **zero** tests — a silent pass-looking failure. Suppress it to
+see the real result: `pytest -W "ignore::pytest.PytestConfigWarning"`.
 
 ---
 

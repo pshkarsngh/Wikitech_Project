@@ -91,8 +91,9 @@ These are load-bearing. Breaking one breaks the tests or the deployment.
   assigns when `getattr(app.state, ..., None) is None`; never assign unconditionally.
 * Article titles are **query params**, never path params (slashes break routing).
 * PostgreSQL is optional. An empty `DATABASE_URL` is the default, not a misconfiguration:
-  the app boots, `/api/health` reports `database_enabled: false`, and
-  `/api/analyses/recent` returns `[]`.
+  the app boots and `/api/health` reports `database_enabled: false`. There is no
+  history endpoint — `GET /api/analyses/recent` and `repository.recent_analyses` were
+  removed in `c7d5344`.
 
 ## 6. Backend conventions
 
