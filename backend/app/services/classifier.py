@@ -11,6 +11,7 @@ import asyncio
 import re
 
 from app.config import Settings
+from app.services.budget import AnalysisAborted
 from app.services.mediawiki import MediaWikiClient
 
 PERSON = "person"
@@ -109,6 +110,14 @@ async def classify_titles(
     async def lookup(title: str) -> tuple[str, str]:
         try:
             description = await client.wikidata_descriptions(title)
+        except AnalysisAborted:
+            # Ahead of the broad catch below, and not out of caution: this is a
+            # deadline or a disconnect, not a name that failed to classify. Letting
+            # the catch below handle it would record the name as "other" and carry
+            # on gathering the remaining ones, which is the exact behaviour the
+            # budget exists to prevent - every one of them another request to
+            # Wikidata for a result nobody is waiting for.
+            raise
         except Exception:  # noqa: BLE001 - classification is best effort
             return title, OTHER
         return title, classify_description(description)

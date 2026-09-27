@@ -231,3 +231,32 @@ without the code means the next release re-breaks UAT-02.
 | Phase 6 sign-off | UAT owner | A human action. |
 | Release candidate approval | Release owner | Phase 7 entry criterion; the release is deployed and verified, this is the signature. |
 | Production host and image registry | unassigned | `0.1.0-6336d1f` runs on the development machine on `:8082` and the images were never pushed. See `deploy/RELEASE-0.1.0.md`. |
+| Deadline path seen by a human in a browser | UAT owner | Verified over HTTP on 28 September 2026 (§9), not rendered. |
+
+## 9. Deadline and cancellation, executed against the stack (28 September 2026)
+
+C6 and C7 were verified over HTTP against a real Docker Compose staging stack, because
+both claims are about timing and a unit test with a fake clock can only assert the code
+agrees with itself. The stack was run with `ANALYSIS_DEADLINE_SECONDS` overridden, which
+is the one thing an operator can actually get wrong.
+
+| Deadline | Article | Result | Elapsed | What it proves |
+| -------- | ------- | ------ | ------- | -------------- |
+| 100s (shipped) | `Chandni Chowk` | 200, `aborted: false` | 14.0s | Nothing changes for a normal analysis. |
+| 3s | `Connaught Place` | 200, `aborted: false` | 3.0s | An analysis that fits inside the deadline is unaffected. |
+| 3s | `Mumbai`, `Delhi` | **504** | 3.0–3.3s | An abort *before* the link graph exists returns no partial. |
+| 3s | `GET /api/connections/missing?title=Berlin` | **504** | — | A list route never returns a list that was cut short. |
+| 9s | `Jaipur` | **200, `aborted: true`, `abort_reason: "deadline"`, `entity_types_incomplete: true`**, 500 links, 7 missing, 0 one-way | 9.2s | An abort *after* the graph keeps the real findings and marks the unfinished stages. |
+
+Two further facts, both read out of the deployment's own database rather than asserted:
+
+- Re-analysing `Jaipur` immediately afterwards took another 9.4s and answered 504 — not a
+  cache hit in 0.0s. The first call's partial was never stored.
+- `analysis_runs` held rows for `Chandni Chowk` and `Connaught Place` — the two analyses
+  that completed — and **no row for any of the seven that aborted**.
+
+The shipped-default run is recorded in `deploy/uat/smoke-2026-09-28.json`: 14/14.
+
+This first live run is also what found **DEF-007**, a pre-existing 502 unrelated to the
+deadline, described in `DEFECTS.md`. The stack is the reason it is written down rather
+than described as impossible to have missed.

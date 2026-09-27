@@ -37,6 +37,19 @@ class Settings(BaseSettings):
     classify_max_items: int = 20
     map_node_limit: int = 40
 
+    # How long one analysis may run before it stops asking for more, in seconds.
+    # None of the per-request caps above bound wall-clock: a 20s HTTP timeout, a
+    # concurrency limit of three and a 500-link article still add up to minutes,
+    # and a client that navigates away does not stop them.
+    #
+    # It must stay below `proxy_read_timeout` in frontend/nginx-proxy-api.conf.
+    # A backend deadline at or above the proxy's own read timeout buys nothing:
+    # nginx has already closed the connection and the client sees a bare 502
+    # with no body, so the partial result and its `aborted` marker never arrive.
+    # The backend has to finish and answer first. 100s against a 120s ceiling
+    # leaves room for serialising the response and the slowest single request.
+    analysis_deadline_seconds: float = 100.0
+
     # How long an analysis run is kept before it is pruned. `analysis_runs` grows with
     # request volume and nothing else, so it is the one table in this schema that no
     # natural bound applies to: `articles` and `article_links` are capped by the size of

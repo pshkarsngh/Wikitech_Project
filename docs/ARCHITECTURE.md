@@ -512,6 +512,82 @@ into the bundle: a key in the JavaScript is a key every visitor already has, whi
 gate nothing. A 401 renders the prompt in place of the error panel, and submitting it
 retries the analysis that was refused.
 
+## 10.1a Bounding an analysis in time
+
+**Added for C6 and C7 of the public readiness audit. This is a decision, not a
+deferred question, because the alternative was a resource limit that is a
+consequence of the transport rather than of the application.**
+
+An analysis has no natural wall-clock ceiling. The per-request limits in `Settings`
+bound each *step* and not the sum: 25-35 calls to Wikimedia, at most 3 in flight,
+with a 20s timeout each, is minutes of wall clock for one request. A visitor who
+navigates away does not stop it, because the work is not in the browser. So
+`ANALYSIS_DEADLINE_SECONDS` (default 100) is the application's own ceiling on the
+sum, enforced in two places.
+
+**Where it is enforced, and why that place.** `AnalysisBudget`
+(`app/services/budget.py`) is checked in `MediaWikiClient._api_get` - the single
+chokepoint every Wikimedia request passes through. Checking in each caller would
+mean a new call site that silently opts out. Each in-flight request is additionally
+bounded by `min(http_timeout_seconds, budget remaining)`, because a check at the
+chokepoint is only noticed *between* requests: without the clamp the real ceiling
+is `deadline + http_timeout_seconds`, which at the shipped defaults is exactly
+`proxy_read_timeout`, and the two would give up at the same moment. Measured
+against the real client, a 2s budget with a 20s per-request timeout aborts at 2.0s
+with one attempt made.
+
+**Why a `ContextVar`.** The `MediaWikiClient` is a single instance shared by every
+request (`app.state.wikipedia`), so a per-request deadline cannot be an attribute on
+it - two concurrent analyses would overwrite each other's deadline. Threading a
+parameter through every service and client method is a much larger diff, so the
+budget travels in a `ContextVar` that a dependency installs and removes around each
+request. This relies on the ASGI server running a dependency and its endpoint in one
+context, which is an assumption about Starlette's internals and is asserted in
+`tests/test_budget.py` rather than taken on faith.
+
+**The two stops are different, and are treated differently.**
+
+| Stop | Cause | What the client gets |
+| --- | --- | --- |
+| Deadline | `ANALYSIS_DEADLINE_SECONDS` passed | 200 with `summary.aborted`, or 504 before the link graph exists |
+| Disconnect | `Request.is_disconnected()` | nothing; the work unwinds |
+
+A deadline returns a **partial result with a marker** because the article's links
+and its missing connections are resolved *before* anything optional runs, so that
+part is real rather than guessed. (Real is not the same as exhaustive: the separate
+`links_truncated` cap is what makes the link set short, and the two markers are
+independent - a client must not read one as describing the other.) A disconnect
+produces nothing, because there is no longer a client to read the answer and
+finishing would spend the rest of a shared budget for bytes nobody will read.
+
+**A partial answer must never masquerade as a complete one.** This is the same
+invariant as `build_extracted_links` dropping unanswered links, applied to whole
+stages:
+
+- `POST /api/analyze` returns `aborted`, `abort_reason` and
+  `entity_types_incomplete`, and the SPA raises a notice above the tiles. A stage
+  that never ran is not an empty result: it is an absent one, and the counts are
+  floors.
+- The three `GET /api/connections/*` routes return a **bare list**, with nowhere to
+  put a marker. A list that was cut short and a list that is genuinely empty are
+  the same bytes once they have left the building, so those routes answer **504**
+  rather than return a partial as a finding. This is the deliberate asymmetry: the
+  route with a summary can be honest about a partial answer, the routes without one
+  cannot.
+- An **aborted result is never cached.** It is a subset, and storing it under the
+  article's own key would serve that subset to whoever asks next for the whole TTL
+  with nothing in the payload to explain why it is short.
+
+**The deadline must stay below `proxy_read_timeout`.** If the two meet, nginx
+closes the connection as the backend writes, and a partial analysis arrives as a
+bare 502 with no body and no `aborted` marker - which loses the entire feature.
+`tests/test_deployment_contract.py` asserts the ordering, because both are operator
+tunable and neither is a build-time constant.
+
+**Not applied to the read routes.** They are a single MediaWiki request each and are
+already bounded by `http_timeout_seconds`; a deadline there would only add a way to
+fail a request that was going to answer.
+
 ## 10.2 Input Validation
 
 The backend must validate article input before processing it.
@@ -694,6 +770,12 @@ support the core workflow, what replaces it?
     account with a bot flag is **exempt**.
   - `maxlag` is sent on every request, so a busy wiki refuses the request rather than
     queueing it and turning into a slow success.
+  - **Per-request budgets bound a request, not the deployment.** Those three limits cap
+    any single call and the concurrency ceiling caps the pressure on Wikimedia, but
+    nothing in them bounds how long one analysis may run in total, and a visitor who
+    navigates away does not stop it. `analysis_deadline_seconds` (100s, see 10.1a) is the
+    wall-clock ceiling on the sum, and it is the only thing that makes "one analysis" a
+    bounded unit of work rather than "however long Wikimedia takes".
   - One analysis costs roughly 25–35 requests — counted from `Chandni Chowk`: 444 links,
     441 existing, 3 missing — so **the deployment can serve about 6–8 analyses per minute
     in total, shared by every user.** This is a capacity ceiling, not a tuning knob, and no

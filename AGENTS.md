@@ -20,7 +20,7 @@ backend/
     dependencies.py    Annotated aliases: ClientDep, SettingsDep, TitleQuery, SearchQuery,
                       require_analysis_key  (the X-Api-Key gate)
     routers/           articles.py, analysis.py  (HTTP only)
-    services/          analysis.py, classifier.py, mediawiki.py  (no FastAPI)
+    services/          analysis.py, budget.py, classifier.py, mediawiki.py  (no FastAPI)
   tests/               conftest.py, fake_wikipedia.py, smoke_live.py,
                       test_frontend_contract.py, test_persistence.py, test_*.py
   requirements.txt  pytest.ini  .env.example
@@ -116,7 +116,26 @@ These are load-bearing. Breaking one breaks the tests or the deployment.
   runs inside its `try`, and the container `HEALTHCHECK` needs it never to raise.
 * A partial answer must never masquerade as a complete one. `build_extracted_links`
   (`services/analysis.py:278-284`) drops any link the existence check did not answer
-  rather than guessing `exists`/`missing`.
+  rather than guessing `exists`/`missing`. The same rule applies to a whole *stage*:
+  a deadline mid-analysis returns `summary.aborted` with `abort_reason` and
+  `entity_types_incomplete`, and the three `GET /api/connections/*` routes answer 504
+  rather than return a list that was cut short, because a bare list has nowhere to say
+  it is partial and a short list is indistinguishable from an empty one.
+* Every Wikimedia call passes through `MediaWikiClient._api_get`, and that is where
+  `AnalysisBudget` is checked — the single chokepoint, not per call site. A new route
+  that crawls must carry `BudgetDep`, which `test_deployment_contract.py` enforces.
+  The budget is a `ContextVar`, not a client attribute: the client is one shared
+  instance on `app.state`, so an attribute would let concurrent requests overwrite each
+  other's deadline. `AnalysisAborted` is not a `WikipediaError` and must not be caught
+  by a broad `except Exception` — `classify_titles` re-raises it explicitly for exactly
+  that reason.
+* `analysis_deadline_seconds` (100) must stay **below** `proxy_read_timeout` in
+  `frontend/nginx-proxy-api.conf` (120). At the same value nginx closes the connection
+  as the backend writes, so a partial analysis arrives as a bare 502 with no
+  `aborted` marker. Both are operator-tunable, which is why the ordering is asserted
+  in a test rather than left to a comment.
+* An aborted result is never cached. It is a subset, and storing it under the article's
+  own key would serve that subset to the next reader for the whole TTL.
 * `app.state` is the injection seam the test harness depends on. `main.py:33-36` only
   assigns when `getattr(app.state, ..., None) is None`; never assign unconditionally.
 * Article titles are **query params**, never path params (slashes break routing).

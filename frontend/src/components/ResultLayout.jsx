@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 
 import ApiKeyPrompt from './ApiKeyPrompt'
 import ArticleSummary from './ArticleSummary'
+import IncompleteNotice from './IncompleteNotice'
 import SearchBar from './SearchBar'
 import { ErrorMessage, EmptyState, Loading, StatCard } from './ui'
 import { useAnalysis } from '../context/AnalysisContext'
@@ -55,6 +56,11 @@ export default function ResultLayout({ children, showSummary = true, loadingLabe
       {status === 'ready' && article && (
         <>
           {showSummary && <ArticleSummary article={article} generatedAt={generatedAt} />}
+
+          {/* Above the tiles, not below them. The numbers underneath are floors
+              when this is showing, and a warning the reader scrolls past is not
+              a warning. */}
+          <IncompleteNotice summary={summary} />
 
           <div className={styles.stats}>
             <StatCard

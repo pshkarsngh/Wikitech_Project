@@ -156,6 +156,24 @@ class AnalysisSummary(BaseModel):
     total_places: int = 0
     missing_people: int = 0
     missing_places: int = 0
+    # Set when the analysis stopped on its deadline instead of finishing. The
+    # article's links and missing connections are real, because they are resolved
+    # before anything optional runs, but the entity types and the one-way check are
+    # whatever finished. Every count below is therefore a floor rather than a
+    # finding, and `abort_reason` says which stop it was.
+    #
+    # "Real" is not "exhaustive": `links_truncated` is a separate, independent
+    # reason the link set is short, and a client must not read `aborted` as
+    # describing that one.
+    #
+    # There is no disconnect counterpart: a client that has gone is not answered at
+    # all, so a partial result is never built for one.
+    aborted: bool = False
+    abort_reason: str | None = None
+    # Distinguishes "found no people" from "ran out of time before typing them".
+    # Without it the entity counts of an aborted analysis read as a real answer
+    # about an article that has any.
+    entity_types_incomplete: bool = False
 
 
 class AnalysisResult(BaseModel):

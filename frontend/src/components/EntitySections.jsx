@@ -134,6 +134,13 @@ export default function EntitySections({ links = [], sourceTitle, summary = {} }
   // an article's own descriptions are not capped and are complete.
   const classifyTruncated = summary.classify_truncated
 
+  // A stronger version of the same problem. The typing stage did not merely run
+  // short, it never finished, so an empty section here means "not looked at",
+  // not "there is nothing here". Saying "No people identified" on the strength of
+  // a stage that was cut off is the false-negative this notice exists to prevent,
+  // so the count and the empty state are both suppressed.
+  const typingUnfinished = Boolean(summary.entity_types_incomplete)
+
   return (
     <div className={styles.sections}>
       {SECTIONS.map((section) => {
@@ -145,13 +152,24 @@ export default function EntitySections({ links = [], sourceTitle, summary = {} }
             key={section.key}
             tone={section.tone}
             title={section.title}
-            subtitle={`${entities.length} ${section.missing ? 'without an article of their own' : 'with an article'}, from ${sourceTitle || 'this article'}.`}
+            subtitle={
+              typingUnfinished
+                ? 'This analysis stopped before every name could be typed, so this section is not complete.'
+                : `${entities.length} ${section.missing ? 'without an article of their own' : 'with an article'}, from ${sourceTitle || 'this article'}.`
+            }
           >
             {entities.length === 0 ? (
-              <EmptyState
-                title={section.emptyTitle}
-                description={section.emptyDescription}
-              />
+              typingUnfinished ? (
+                <EmptyState
+                  title="Not checked"
+                  description="Names are typed from the article they point to, or from Wikidata when there is no article yet. This analysis stopped partway through, so the names in this section were never all looked at."
+                />
+              ) : (
+                <EmptyState
+                  title={section.emptyTitle}
+                  description={section.emptyDescription}
+                />
+              )
             ) : (
               <>
                 <ul className={styles.list} aria-label={section.title}>

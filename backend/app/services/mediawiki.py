@@ -20,6 +20,13 @@ import httpx
 
 from app.config import Settings
 from app.schemas import ArticleDetail, ResolvedTitle, SearchResultItem
+from app.services.budget import (
+    DEADLINE,
+    AnalysisAborted,
+    check_budget,
+    current_budget,
+    request_timeout,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -178,12 +185,27 @@ class MediaWikiClient:
             **params,
         }
 
+        # The one place every Wikimedia request passes through, which is why the
+        # budget is checked here and not in each caller. Checked before the
+        # request so a blown deadline does not spend one more call, and again
+        # after it so a caller does not treat a response that arrived too late as
+        # a completed stage.
+        await check_budget()
+
         last_error: Exception | None = None
         for attempt in range(2):
             retry_after: float | None = None
             try:
-                async with self._semaphore:
-                    response = await self._client.get(url, params=query)
+                # The semaphore is acquired inside the budget's own timeout, so
+                # time spent queueing behind the concurrency limit counts against
+                # the deadline rather than being free. With `max_concurrent_requests`
+                # at 3 and 25+ calls to make, waiting is the normal case and not a
+                # pathological one.
+                async with asyncio.timeout(
+                    request_timeout(self._settings.http_timeout_seconds)
+                ):
+                    async with self._semaphore:
+                        response = await self._client.get(url, params=query)
                 if response.status_code == 404:
                     raise WikipediaError(f"{url} returned 404")
                 if response.status_code == 429 or response.status_code >= 500:
@@ -198,11 +220,24 @@ class MediaWikiClient:
                 payload = response.json()
             except WikipediaError as exc:
                 last_error = exc
+            except TimeoutError as exc:
+                # Raised by `asyncio.timeout` above, and not by httpx, which is
+                # what tells the two apart. A timeout that was the budget's is not
+                # an upstream failure: Wikimedia may be perfectly healthy and the
+                # request simply ran out of this analysis's time. Reporting it as
+                # `WikipediaError` would send the caller to a 502 blaming Wikipedia,
+                # and would then be retried, spending another request on a
+                # request that has already run out of time.
+                budget = current_budget()
+                if budget is not None and budget.expired():
+                    raise AnalysisAborted(DEADLINE) from exc
+                last_error = WikipediaError(f"Request to {url} timed out: {exc}")
             except (httpx.HTTPError, ValueError) as exc:
                 last_error = WikipediaError(f"Request to {url} failed: {exc}")
             else:
                 if isinstance(payload, dict) and "error" in payload:
                     raise WikipediaError(f"MediaWiki API error: {payload['error']}")
+                await check_budget()
                 return payload
             if attempt == 0:
                 # A little jitter, so several clients that were refused together do not
@@ -210,6 +245,9 @@ class MediaWikiClient:
                 await asyncio.sleep(
                     retry_after if retry_after is not None else _RETRY_BACKOFF_SECONDS
                 )
+                # The retry backoff sleeps, so the deadline can pass while waiting
+                # and a doomed second attempt would be one more call to Wikimedia.
+                await check_budget()
 
         logger.warning("MediaWiki request failed after retries: %s", last_error)
         raise WikipediaError(str(last_error) or "Unknown MediaWiki failure")
@@ -506,6 +544,10 @@ class MediaWikiClient:
                 "pageids": "|".join(str(page_id) for page_id in batch),
                 "redirects": _MAX_REDIRECTS,
             }
+            # Whether this batch dropped a link because the cap was already reached.
+            # A continuation that adds nothing is explained by that, and explained
+            # stalls must not be reported as a broken token - see below.
+            cap_reached = False
 
             # Paged one query at a time, because a continuation token belongs to the
             # query that produced it and cannot be carried into the next batch.
@@ -528,6 +570,7 @@ class MediaWikiClient:
                             # A link we had to drop is a link we cannot see the
                             # destination of, so the answer stops being complete here.
                             entry.complete = False
+                            cap_reached = True
                             continue
                         entry.titles.add(title_key(title))
 
@@ -536,6 +579,17 @@ class MediaWikiClient:
                 if sum(len(entry.titles) for entry in result.values()) == before:
                     # A continuation that brings back nothing new would spin forever,
                     # holding a request and a slot in the concurrency semaphore.
+                    #
+                    # The cap is the ordinary reason that happens. A page with more
+                    # main-namespace links than `max_links_per_page` - Delhi has over
+                    # 500 - fills up, is marked incomplete, and every link in the
+                    # following pages is then dropped for the same reason. Treating
+                    # that as a broken token failed the whole analysis with a 502 for
+                    # any article linking somewhere huge, which is most of them. The
+                    # page is already marked incomplete, so the honest answer is to
+                    # stop and let the caller treat the target as unverified.
+                    if cap_reached:
+                        break
                     raise WikipediaError(
                         "MediaWiki returned a continuation token that returned no new links"
                     )

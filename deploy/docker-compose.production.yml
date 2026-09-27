@@ -80,6 +80,13 @@ services:
       # `GET /api/health` reports the result as `auth_required`, so an operator can
       # confirm which mode a running deployment is actually in.
       ANALYSIS_API_KEY: ${ANALYSIS_API_KEY:-}
+      # Exposed here rather than left at the image default because it is coupled to
+      # something the operator can also change: `proxy_read_timeout` in
+      # frontend/nginx-proxy-api.conf. If this reaches it, nginx closes the connection
+      # at the moment the backend is about to write a body, and a partial analysis
+      # arrives as a bare 502 with no body and no `aborted` marker. Keep this
+      # comfortably below it; the backend must finish and answer first.
+      ANALYSIS_DEADLINE_SECONDS: ${ANALYSIS_DEADLINE_SECONDS:-100}
     expose:
       - "8000"
     logging:

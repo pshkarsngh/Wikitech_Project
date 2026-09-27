@@ -72,6 +72,12 @@ services:
       # ANALYSIS_API_KEY=some-ascii-string. Empty keeps staging open, which is the
       # default. `GET /api/health` reports the mode as `auth_required`.
       ANALYSIS_API_KEY: ${ANALYSIS_API_KEY:-}
+      # Lower than production on purpose. This is where the deadline is worth
+      # exercising: set it low enough to hit on a real article and the stack should
+      # answer 200 with `summary.aborted` on /api/analyze and 504 on the list routes,
+      # rather than running until nginx gives up. Keep it under
+      # `proxy_read_timeout` in frontend/nginx-proxy-api.conf.
+      ANALYSIS_DEADLINE_SECONDS: ${ANALYSIS_DEADLINE_SECONDS:-100}
     expose:
       - "8000"
     # Published on loopback only, so a UAT run can hit the API without going

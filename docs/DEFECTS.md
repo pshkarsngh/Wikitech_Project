@@ -2,9 +2,9 @@
 
 ## Find the Missing Connections
 
-**Version:** 1.2
-**Date:** 27 September 2026
-**Status:** All six entries fixed; **no entry verified against a deployed stack**
+**Version:** 1.3
+**Date:** 28 September 2026
+**Status:** All seven entries fixed; **the first entry verified against a deployed stack**
 **Owner:** `unassigned`
 
 Every entry was reproduced on the working tree at `6336d1f` unless stated otherwise.
@@ -16,8 +16,71 @@ persistence write path — that is B6 in `PUBLIC-READINESS.md`, and it is worth 
 where the list stopped being a review of a commit and became a record of a running
 system. DEF-001, DEF-002 and DEF-004 are backends that were fixed but never deployed;
 DEF-005 was a first-run schema defect, still conditional on `init.sql` being applied
-before first start. The list is open because five entries are fixed and one is fixed in
-this change, with none of it verified against a deployed stack.
+before first start.
+
+**DEF-007** was found on 28 September 2026 by the first live run of
+`deploy/smoke_test.py` against a real Docker Compose stack, and it is the second
+instance of the same lesson: everything up to that point was reviewed as source and
+passed review. The list is open because seven entries are fixed and the newest was
+found by the running system rather than by reading the diff.
+
+---
+
+## DEF-007 — A target with more links than the cap failed the whole analysis with a 502
+
+**Severity:** Blocking · **Status:** **Fixed** 28 September 2026 · **Found by:**
+`deploy/smoke_test.py --expect-database` against the staging stack, article
+`Chandni Chowk`
+
+```
+POST /api/analyze -> HTTP 502
+{"detail":"Wikipedia request failed: MediaWiki returned a continuation token that returned no new links"}
+```
+
+`get_links_for_page_ids` paginates the reverse-link read with `pllimit=max`, which
+MediaWiki caps at 500 for a client without `apihighlimits`. When a page has more
+main-namespace links than `max_links_per_article`, the cap fills up, the page is
+marked `complete = False`, and **every link in the following pages is then dropped for
+the same reason** — so the continuation adds nothing.
+
+The loop had a guard for exactly that symptom, added with DEF-004: a continuation that
+returns no new titles would spin forever, so it raised `WikipediaError`. The guard could
+not tell a broken token from a cap, so the cap — the ordinary case — was reported as an
+upstream failure. `Chandni Chowk` links to Delhi, which has more than 500 main-namespace
+links, so the seed article's one-way stage could not complete and the entire analysis
+was a 502.
+
+This is why **it survived review and 244 tests**: the existing test
+`test_a_continuation_that_returns_nothing_new_stops_the_loop` covers a genuine stall,
+and `test_the_cap_is_configurable` covers a cap that fills on the first page and then
+ends. Nothing covered a cap that fills and *then* keeps being offered another page. It
+is also not specific to any one article: any article linking to a very large article
+fails, which is most of them.
+
+**Fixed** by tracking whether the current batch dropped a link to the cap, and treating
+a stall that the cap explains as the end of the useful data rather than a broken token.
+The page stays `complete = False`, so the caller still treats the target as unverified
+and never reports a one-way connection it could not check — the DEF-004 contract is
+unchanged, and a token that really is broken still raises. Two tests, one per branch,
+in `tests/test_mediawiki.py`.
+
+Reproduced against the live API before the fix: page 844 (Delhi) alone raised, while
+every one of the other 19 targets returned cleanly; at a cap of 5 the guard fired on the
+first continuation, which is what identified the cap as the cause rather than a
+malformed token.
+
+**Also corrected in the same run, and worth the same scrutiny.**
+`smoke_test.py`'s "missing connections are shown" check required at least one missing
+connection to be typed `person` or `place`, on the stated grounds that "the screen
+filters on those". It does not: `MissingConnectionsList` offers All / People / Places /
+**Other** and lists an untyped name without a badge. A missing link has no page id, so
+the only thing that can type it is a Wikidata hit, and on 28 September none of
+`Chandni Chowk`'s three missing names had one. The check failed against a healthy
+deployment; it had passed on 27 September only because one of the same three names
+resolved that day. How well the classifier types names is D4 and belongs to its owner,
+so the check now asserts the invariant it can actually prove — every missing connection
+is missing, and carries a type the screen has a filter for — and reports the typed
+count as information.
 
 ---
 
@@ -316,7 +379,9 @@ The six undefined CSS custom properties previously listed here were re-checked o
 Five defects were closed earlier: **DEF-001** and **DEF-002** in `e8a062a`, and **DEF-003**,
 **DEF-004** and **DEF-005** on 27 September 2026. **DEF-006** was found and fixed the same
 day, while closing B6 of `PUBLIC-READINESS.md` — the first executed test of the write path
-failed on its first run. **Six are closed and none is open.**
+failed on its first run. **DEF-007** was found on 28 September 2026 by the first live run of
+`deploy/smoke_test.py` against a deployed stack: a target with more links than the cap
+failed the entire analysis with a 502. **Seven are closed and none is open.**
 
 The next entries belong to `PUBLIC-READINESS.md`, which lists what is still missing rather
 than what is broken: authentication, TLS, an application rate limit behind nginx, an

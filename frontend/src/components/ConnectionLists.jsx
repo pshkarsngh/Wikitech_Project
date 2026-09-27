@@ -185,14 +185,26 @@ export function OneWayConnectionsList({
       subtitle={subtitle}
     >
       {connections.length === 0 ? (
-        <EmptyState
-          title="No one-way connections found"
-          description={
-            incompleteCount
-              ? 'Every target whose links could be read in full links back to the source article. Some targets had more links than one request can return, so they are unverified rather than mutual.'
-              : 'Every target article that was checked links back to the source article.'
-          }
-        />
+        // Zero targets checked is not a clean result. It is an absent one, and
+        // the two are indistinguishable in an empty list, so the empty state has
+        // to be the one that admits it. This is the case an analysis that ran out
+        // of time before the reverse-link check produces, and it is also the case
+        // where every candidate was unread.
+        checkedCount > 0 ? (
+          <EmptyState
+            title="No one-way connections found"
+            description={
+              incompleteCount
+                ? 'Every target whose links could be read in full links back to the source article. Some targets had more links than one request can return, so they are unverified rather than mutual.'
+                : 'Every target article that was checked links back to the source article.'
+            }
+          />
+        ) : (
+          <EmptyState
+            title="No targets were checked"
+            description="The reverse links of this article's targets were never read, so this is not a finding of no one-way connections. It is a check that did not finish."
+          />
+        )
       ) : (
         <>
           <ul className={styles.list}>

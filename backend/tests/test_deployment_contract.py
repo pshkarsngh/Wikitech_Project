@@ -355,6 +355,83 @@ def test_the_analysis_endpoints_are_rate_limited() -> None:
     assert "limit_req_status 429" in nginx, "a throttled request must answer 429, not 503"
 
 
+def test_the_backend_deadline_leaves_room_under_the_proxy_read_timeout() -> None:
+    """The backend has to answer before nginx stops waiting, or C6 buys nothing.
+
+    `ANALYSIS_DEADLINE_SECONDS` is the application's own ceiling and
+    `proxy_read_timeout` is the transport's. When the first reaches the second, or
+    passes it, nginx closes the connection at the same moment the backend is about to
+    write a body. The reader then gets a bare 502: no partial result, no `aborted`
+    marker, and no way to tell that from Wikipedia being down. The marker is the whole
+    reason a deadline may return 200 with an incomplete answer, so losing the race
+    loses the feature.
+    """
+
+    from app.config import Settings
+
+    proxy = _read(NGINX_PROXY)
+    match = re.search(r"proxy_read_timeout\s+(\d+)s", proxy)
+    assert match, "no proxy_read_timeout, so nothing bounds how long nginx waits"
+
+    deadline = Settings().analysis_deadline_seconds
+    ceiling = int(match.group(1))
+    assert deadline < ceiling, (
+        f"the analysis deadline is {deadline}s and nginx gives up at {ceiling}s. The "
+        "backend must finish first or the partial result is never delivered."
+    )
+
+
+def test_a_deadline_leaves_room_for_the_slowest_single_request() -> None:
+    """The per-request timeout has to fit inside the deadline, with room to spare.
+
+    `MediaWikiClient._api_get` bounds a request by `min(http_timeout_seconds,
+    budget remaining)`, so a single slow call cannot overrun the deadline on its own.
+    That clamp is the reason this is not only a `<` check, and it is the reason the
+    two settings cannot be moved independently without re-reading the transport.
+    """
+
+    from app.config import Settings
+
+    settings = Settings()
+    assert settings.http_timeout_seconds < settings.analysis_deadline_seconds, (
+        f"one request may take {settings.http_timeout_seconds}s of a "
+        f"{settings.analysis_deadline_seconds}s deadline, leaving too little for the "
+        "graph to be built at all"
+    )
+
+
+def test_every_crawling_route_carries_the_budget_dependency() -> None:
+    """The four routes that fan out must each have one, and no read route may.
+
+    A budget is a per-request deadline, so it is installed as a dependency rather
+    than a line in the handler, and a route that omits it runs unbounded while
+    looking entirely normal. The read routes are the other half of the rule: they are
+    one MediaWiki request each and already bounded by `http_timeout_seconds`, so a
+    deadline there would only add a way to fail a request that was going to answer.
+    """
+
+    source = (BACKEND / "app" / "routers" / "analysis.py").read_text(encoding="utf-8")
+
+    def params_after(name: str) -> str:
+        match = re.search(
+            rf"async def {name}\(\s*_key: AnalysisKeyDep,(.*?)\) ->", source, re.DOTALL
+        )
+        assert match, f"could not read the signature of {name}"
+        return match.group(1)
+
+    for route in ("analyze", "missing_connections", "one_way_connections", "connection_map"):
+        assert "BudgetDep" in params_after(route), (
+            f"{route} fans out to Wikimedia and has no AnalysisBudget. It will run "
+            "until nginx gives up on it."
+        )
+
+    articles = (BACKEND / "app" / "routers" / "articles.py").read_text(encoding="utf-8")
+    assert "BudgetDep" not in articles, (
+        "a read route gained a deadline. It is a single request already bounded by "
+        "http_timeout_seconds, and this adds a way to fail it for no gain."
+    )
+
+
 def test_the_rate_limit_budget_matches_the_published_upstream_limit() -> None:
     """The zone rate is a consequence of Wikimedia's 200 req/min, not a preference.
 

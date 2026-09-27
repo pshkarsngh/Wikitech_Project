@@ -50,7 +50,12 @@ WIKIDATA_DESCRIPTIONS: dict[str, str | None] = {
 
 
 class FakeWikipediaClient:
-    """Mirrors the parts of MediaWikiClient the services rely on."""
+    """Mirrors the parts of MediaWikiClient the services rely on.
+
+    Deliberately does not go through `MediaWikiClient._api_get`, which is where the
+    real client enforces `AnalysisBudget`. A test that makes this fake wait will
+    never see a deadline fire; see the note in `tests/test_budget.py`.
+    """
 
     def __init__(self) -> None:
         self.link_calls: list[str] = []

@@ -2,7 +2,7 @@
 
 ## Find the Missing Connections
 
-**Version:** 1.4
+**Version:** 1.5
 **Date:** 27 September 2026
 **Base commit:** `e8a062a`
 **Status:** Open — see the implementation note below
@@ -24,8 +24,6 @@
 > Still open: **A3**'s remaining half — no request logging, no metrics, no alerting, and
 > one IP as the only unit of punishment; **B4** the seed link-pagination loop has no
 > iteration cap; **B7** `looks_like_person` can never return `True`; **C2** no TLS;
-> **C7** no cancellation on disconnect; **C6** a 120s nginx read timeout is a ceiling the
-> worst case can still exceed, because nothing bounds total analysis wall-clock;
 > **C12** the SQLite fallback
 > `ARCHITECTURE.md` §11.8 promises is still impossible; **C13** no `LICENSE` or root
 > `README.md`; **D4** the classifier; **D5** the
@@ -126,8 +124,8 @@ commits and in `DEFECTS.md`.
 | C3 | `/articles/resolve` bounds the list, not the items | Hardening | Fixed in `704e763` — `BatchedTitle` |
 | C4 | No request body size limit | Hardening | Fixed in `704e763` — 64k at both layers |
 | C5 | `--forwarded-allow-ips '*'` trusts any client | Hardening | Fixed in `704e763` — narrowed to subnets |
-| C6 | Slow analyses 502 while the backend keeps working | Hardening | Open — 120s is a ceiling, not a bound |
-| C7 | No cancellation when the client disconnects | Hardening | Open |
+| C6 | Slow analyses 502 while the backend keeps working | Hardening | Fixed — `analysis_deadline_seconds`, 100s, below `proxy_read_timeout` |
+| C7 | No cancellation when the client disconnects | Hardening | Fixed — `AnalysisBudget` at the MediaWiki chokepoint |
 | C8 | Retries ignore `Retry-After` | Hardening | Fixed in `704e763` |
 | C9 | No React error boundary | Hardening | Fixed in `704e763` — `ErrorBoundary` |
 | C10 | Dev database publishes 5432 with a default password | Hardening | Fixed |
@@ -564,6 +562,64 @@ not, delete it and say so in the commit — `AGENTS.md` §14 forbids deleting a 
 | **C5** | **`--forwarded-allow-ips '*'` trusts `X-Forwarded-For` from any client.** Safe only for as long as the API port is unpublished in production. | `backend/Dockerfile:36` | Narrow to the proxy's address, or drop the flag. Harmless today, dangerous the moment the port is exposed. |
 | **C6** | **Slow analyses 502 while the backend keeps working.** Worst case per upstream call is two 20 s attempts plus a 1 s sleep (`services/mediawiki.py:123-144`), across up to 25 reverse-link batches. nginx gives up at `proxy_read_timeout 120s`, returns 502, and the backend keeps fanning out. The natural user response — refresh — doubles the load. The comment at `nginx.conf.template:54-55` assumes the backend aborts; it only aborts on `WikipediaError`, which a slow-but-succeeding upstream never raises. | `frontend/nginx-proxy-api.conf:24-26` (not `nginx.conf.template`, whose `/api` locations only `include` that file); `services/mediawiki.py:123-144` | Either raise the read timeout to match the worst case, or bound total analysis wall-clock in `analyze_article` and abort cleanly so the user gets a real error instead of a 502. The second is better and also addresses C7. |
 | **C7** | **No cancellation on client disconnect.** Navigating away from a loading page leaves the entire fan-out running to completion. | — | Propagate `Request.is_disconnected()` or a cancellation scope into the pipeline. Pair with C6. |
+
+### C6 / C7 — resolution
+
+Closed together, in the same change, because neither is useful alone: a deadline
+with no cancellation still spends the budget, and cancellation with no deadline
+still has no bound on a slow-but-alive upstream.
+
+`AnalysisBudget` (`backend/app/services/budget.py`) is the single mechanism. A
+FastAPI dependency installs it into a `ContextVar` for the request, and
+`MediaWikiClient._api_get` checks it at the one chokepoint every Wikimedia request
+passes through. Each in-flight request is bounded by
+`min(http_timeout_seconds, budget remaining)`, so the real ceiling is the deadline
+and not `deadline + http_timeout_seconds`; without that clamp the two meet at
+exactly `proxy_read_timeout` and the feature is lost to a 502 at the moment it
+matters.
+
+The asymmetry between the two stops is the substantive design call. A **deadline**
+returns 200 with `summary.aborted`, `abort_reason` and `entity_types_incomplete`,
+because the link graph and the missing connections are resolved before anything
+optional runs and are therefore real. A **disconnect** returns nothing, because
+there is no longer a reader and finishing would spend a shared budget on bytes
+nobody will read. The three `GET /api/connections/*` routes answer **504** rather
+than a partial list, because a bare list has nowhere to carry a marker and a
+cut-short list is byte-identical to an empty one once it leaves the building. An
+aborted result is never cached.
+
+Two things found on the way that were not in the original report:
+
+- `classifier.classify_titles` caught `Exception` and logged `"Best-effort
+  classification failed"`. That is right for Wikidata, and it swallowed
+  `AnalysisAborted` too, so a deadline inside classification became a *successful*
+  all-`other` result. The abort is now re-raised explicitly.
+- `Request.is_disconnected()` is consulted at request checkpoints, not raced
+  against the in-flight HTTP call, so disconnect handling is cooperative: a call
+  already on the wire can still complete before the budget notices. The timeout
+  clamp bounds that case; cancelling mid-flight is not implemented, and is recorded
+  as a known limit rather than described as prompt cancellation.
+
+Guards: `backend/tests/test_budget.py` (33 tests), plus three assertions in
+`backend/tests/test_deployment_contract.py` — the deadline is below
+`proxy_read_timeout`, `http_timeout_seconds` is below the deadline, and all four
+crawling routes carry `BudgetDep`. Both config values are operator-tunable, which
+is exactly why the ordering is a test rather than a comment.
+
+**Verified against a deployed stack, not only a test suite.** The evidence is in
+`docs/UAT.md` §9 and `deploy/uat/smoke-2026-09-28.json`: with the deadline forced to
+3s and 9s in a real Compose deployment, `/api/analyze` answered 504 when the abort
+came before the link graph, 200 with `aborted: true` and the real 500 links when it
+came after, and the list routes answered 504 every time. `analysis_runs` held a row
+for the analyses that completed and none for the seven that aborted, which is the
+no-cache rule observed in the database rather than asserted about it.
+
+That same first live run found a defect neither review nor 244 tests had:
+**DEF-007**, a pre-existing 502 for any article linking to something with more than
+500 main-namespace links, now fixed and written up in `DEFECTS.md`. It is not
+counted here because it was never an open finding — it is recorded because a
+deployment found it and the ledger should say so.
+
 | **C8** | **Retries ignore `Retry-After` and use a fixed 1 s sleep.** A 429 or 503 from Wikimedia is re-issued one second later, into the same limiter, guaranteeing a second failure. | `services/mediawiki.py:143-144` | Honour `Retry-After` when present; add jitter. `ARCHITECTURE.md` §12 already notes the absence of exponential backoff as "a possible improvement rather than a gap" — under A1 it becomes a gap. |
 | **C9** | **No React error boundary.** A search for `ErrorBoundary`, `componentDidCatch` and `getDerivedStateFromError` in `main.jsx` and `App.jsx` returns nothing. Any render-time throw produces a blank white page with no console-visible explanation for a non-technical user. | verified absent | One `ErrorBoundary` around `<App />` in `main.jsx`, with the same visual language as `ErrorMessage` in `ui.jsx:79`. |
 | **C10** | **The dev database publishes 5432 to the host with the password `postgres`**, on all interfaces. | `database/docker-compose.yml:9-11` | **Fixed** 27 September 2026 — bound to `127.0.0.1:5432:5432` and `POSTGRES_PASSWORD` now reads `${POSTGRES_PASSWORD:-postgres}`, matching what staging already did. The default value was deliberately *kept*: it is a loopback-only throwaway holding public Wikipedia data, and changing it would silently break every existing `pgdata` volume for no security gain once the port is bound. |
@@ -770,11 +826,10 @@ false positive (B1), the stale-response race (B3) and the read path (A2); the 27
 (`session_scope` swallowing a caller's own bug) and C10 (the dev database on every
 interface). **D3** is closed by a decision rather than a fix, and is recorded here because a
 decision is still a change: `total_links` keeps its as-written meaning and a new `total_articles`
-carries the resolved count, so no value was redefined and nothing was lost. What moves next is C6
-and C7 together — a slow analysis 502s at nginx's read
-timeout while the backend is still working on it, and a client who navigates away leaves
-the whole fan-out running. Bounding the analysis clock and cancelling on disconnect would
-close both. After that: B4, then B7, then D5.
+carries the resolved count, so no value was redefined and nothing was lost. **C6 and C7 are
+now closed** by a per-request budget at the MediaWiki chokepoint, which bounds the analysis
+clock and cancels on disconnect at the same time, with a partial result marked rather than
+presented as complete. What moves next is B4, then B7, then D5.
 
 ---
 
@@ -796,7 +851,7 @@ Every mechanical claim above can be re-checked from the repository root. Run fro
 | CI compares table names only | Superseded — `ci.yml` now compares columns too, and `test_persistence.py` compares the models against a live database |
 | `session_scope` absorbs a caller's bug | Superseded — `db.py` catches `SQLAlchemyError`, not `Exception`. Re-check with `Select-String -Path backend/app/db.py -Pattern 'except'` |
 | Dev database on every interface | Superseded — `database/docker-compose.yml` binds `127.0.0.1:5432:5432`. Re-check with `Select-String -Path database/docker-compose.yml -Pattern '5432:5432'` |
-| Suite state as of this revision | `pytest` (205 passed with `TEST_DATABASE_URL` set, 192 passed + 1 module skipped without it), `npm run test` (47 passed), `npm run lint` (0 errors) |
+| Suite state as of this revision | `pytest` (244 passed with `TEST_DATABASE_URL` set, 231 passed + 1 module skipped without it), `npm run test` (72 passed), `npm run lint` (0 errors, 4 pre-existing warnings), `npm run build`, and `deploy/smoke_test.py` **14/14 against a live Compose stack** — see `docs/UAT.md` §9 |
 
 ---
 
@@ -809,3 +864,4 @@ Every mechanical claim above can be re-checked from the repository root. Run fro
 | 1.2 | 27 Sep 2026 | `unassigned` | Open | `eb7ca71` closed **A3** in part: an optional `ANALYSIS_API_KEY` gates `POST /api/analyze` and the three `GET /api/connections/*` routes, empty by default, compared with `secrets.compare_digest`, and typed into the SPA rather than baked into the bundle. It is a shared secret and not identity, so `analysis_runs` gains no `api_key_id` and A3 keeps a Major remainder — no request logging, metrics, alerting, or per-subject throttling. The same change fixed two things found on the way: `/api/health` was reading the `settings` local `create_app` closes over instead of the injected `app.state.settings`, and every gated route answered 422 rather than 401 because a `Header()` in an `Annotated` with no default is *required* in Pydantic v2. |
 | 1.3 | 27 Sep 2026 | `unassigned` | Open | Closed **B5** and **C10**. **B5:** `db.session_scope` caught `Exception` around a `try` that wraps the caller's own `yield`, so a `TypeError` in `repository.py` was logged as `"Database write failed"` and the write silently dropped. Narrowed to `SQLAlchemyError`; `ping()` keeps its broad catch deliberately, and the reason is written down. Guarded by `tests/test_db.py` (7 tests, stub session, no database) so the assertion is available in a plain `pytest` run. **C10:** `database/docker-compose.yml` bound `5432:5432` — every interface — with a hardcoded password; now `127.0.0.1:5432:5432` with `${POSTGRES_PASSWORD:-postgres}`. The guard test for this was itself vacuous: its regex required a three-part mapping, so the two-part form it existed to catch was the one form it could not see, and it passed against the exact configuration it was written to prevent. **A3 (remainder), B4, B7, C2, C6, C7, C12, C13, D3, D4 and D5 remain open.** |
 | 1.4 | 27 Sep 2026 | `unassigned` | Open | Closed **D3**, which was the last decision on this list that did not need a new external fact — it needed an owner to choose between redefining `total_links`, carrying both numbers, or documenting the mismatch. Chose the second: `total_links` keeps its as-written value and `total_articles` was added for the resolved count, so the raw figure is not discarded to tidy a tile and the existing field is not silently redefined. The tile shows `total_articles` and prints the raw count only when the two differ, because "440 articles / 444 link targets" is informative while the same line on a page where they are equal reads as a bug. `links_truncated` now also drives the hint: when the budget caps the crawl, both counts are a floor, and that was the more misleading of the two numbers in the same tile. No column was added, so the two-file invariant is untouched. **A3 (remainder), B4, B7, C2, C6, C7, C12, C13, D4 and D5 remain open.** |
+| 1.5 | 28 Sep 2026 | `unassigned` | Open | Closed **C6** and **C7** together. `AnalysisBudget` (new `app/services/budget.py`) is a per-request deadline carried in a `ContextVar` — necessary because the `MediaWikiClient` is a single shared instance, so an attribute would have let two concurrent analyses overwrite each other's deadline. It is checked in `MediaWikiClient._api_get`, the single chokepoint every Wikimedia request passes through, and each in-flight call is bounded by `min(http_timeout_seconds, remaining)`; without that clamp the real ceiling is `deadline + http_timeout`, which at the shipped defaults lands exactly on `proxy_read_timeout` and loses the feature to a 502. Default 100s, asserted below 120s by `test_deployment_contract.py`. The deadline returns **200 with `summary.aborted`/`abort_reason`/`entity_types_incomplete`** because the link graph and missing connections are resolved before anything optional runs; a disconnect returns nothing, because the reader is gone; and the three `GET /api/connections/*` routes return **504**, because a bare list cannot say it was cut short and a short list is indistinguishable from an empty one. Aborted results are never cached. Found on the way: `classify_titles` caught `Exception` for best-effort Wikidata work and silently swallowed `AnalysisAborted`, turning a deadline into a successful all-`other` result. Known limit, recorded rather than glossed: `is_disconnected()` is polled at checkpoints, not raced against the in-flight call, so cancellation is cooperative. No column added. **A3 (remainder), B4, B7, C2, C12, C13, D4 and D5 remain open.** |

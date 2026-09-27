@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import secrets
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Query, Request, status
 from pydantic import StringConstraints
 
 from app.config import Settings
+from app.services.budget import AnalysisBudget, budget_scope
 from app.services.mediawiki import MediaWikiClient
 
 
@@ -32,6 +34,37 @@ TitleQuery = Annotated[
 
 ClientDep = Annotated[MediaWikiClient, Depends(get_client)]
 SettingsDep = Annotated[Settings, Depends(get_settings_dep)]
+
+
+async def analysis_budget_scope(
+    request: Request, settings: SettingsDep
+) -> AsyncIterator[None]:
+    """Give this request a deadline, and take it away again when the request ends.
+
+    A dependency rather than a line in each handler, for the same reason
+    ``require_analysis_key`` is one: the budget has to be in place before the
+    first call to Wikimedia, and a handler that forgot to set one up would then
+    run unbounded. Anything that reaches the client gets the budget on the way.
+
+    The yield matters twice over. It installs the budget for the endpoint that
+    follows, and the teardown below runs after the response, so the deadline
+    covers the work rather than stopping the moment the route is entered.
+
+    ``request.is_disconnected`` is passed as a callable instead of being called
+    here, because a disconnect can only be observed from inside the event loop
+    while a request is actually in flight, and because the budget module must not
+    know that a `Request` exists.
+    """
+
+    budget = AnalysisBudget(
+        deadline_seconds=settings.analysis_deadline_seconds,
+        is_disconnected=request.is_disconnected,
+    )
+    with budget_scope(budget):
+        yield
+
+
+BudgetDep = Annotated[None, Depends(analysis_budget_scope)]
 
 # The key for the routes that crawl Wikipedia, read from the header rather than a query
 # parameter so it does not land in nginx access logs, browser history or `Referer`.
@@ -83,6 +116,16 @@ def require_analysis_key(settings: SettingsDep, presented: ApiKeyHeader = None) 
 
 
 AnalysisKeyDep = Annotated[None, Depends(require_analysis_key)]
+
+# A budget is only installed on the routes that crawl. The read routes are a single
+# MediaWiki request each and are already bounded by `http_timeout_seconds`, so a
+# deadline there would only add a way to fail a request that was going to answer.
+# The four routes that build a graph are the ones with no natural wall-clock bound.
+#
+# Deliberately not combined into the `SettingsDep` path. `get_settings_dep` runs for
+# every route including `/api/health`, and an unrequested budget that silently
+# installed itself would make a route's time behaviour depend on which dependencies
+# it happens to declare.
 
 # Whitespace is stripped before the length check, so " " is rejected like "".
 SearchQuery = Annotated[

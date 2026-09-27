@@ -214,3 +214,32 @@ def test_the_legend_names_every_node_type_the_map_draws() -> None:
 
     for label in ("Article node", "Person node", "Place node", "Missing entity"):
         assert f"label: '{label}'" in source, f"the legend lost its '{label}' entry"
+
+
+# The two halves of the app have no shared type, so a field can be added to the
+# payload and simply not reach the screen. The failure is quiet in a way that
+# matters here specifically: `aborted` and `entity_types_incomplete` are booleans,
+# so a missing default is `undefined`, which is falsy. The notice that tells a
+# reader the analysis was cut short would simply never appear, and every panel
+# would go on reporting a floor as a finding. A number would at least render blank.
+
+
+def test_every_summary_field_is_defaulted_by_the_frontend() -> None:
+    from app.schemas import AnalysisSummary
+
+    context = (
+        FRONTEND_SRC / "context" / "AnalysisContext.jsx"
+    ).read_text(encoding="utf-8")
+    empty_summary = re.search(
+        r"const EMPTY_SUMMARY = \{(.*?)\n\}", context, re.DOTALL
+    )
+    assert empty_summary is not None, "AnalysisContext no longer declares EMPTY_SUMMARY"
+
+    declared = set(
+        re.findall(r"^\s*([a-z_0-9]+):", empty_summary.group(1), re.MULTILINE)
+    )
+    missing = set(AnalysisSummary.model_fields) - declared
+    assert not missing, (
+        f"AnalysisSummary gained {sorted(missing)} with no EMPTY_SUMMARY default, so "
+        "the SPA reads undefined rather than the API's value"
+    )

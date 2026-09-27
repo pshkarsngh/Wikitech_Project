@@ -672,3 +672,40 @@ async def test_a_continuation_that_returns_nothing_new_stops_the_loop() -> None:
     with pytest.raises(WikipediaError, match="no new links"):
         await client.get_links_for_page_ids([2])
 
+
+async def test_a_target_with_more_links_than_the_cap_is_unverified_not_a_failure() -> None:
+    # Delhi has more than 500 main-namespace links, so the cap fills up and every
+    # link in the following pages is dropped. That makes the continuation stall,
+    # which used to be reported as a broken token and fail the whole analysis with
+    # a 502 - for any article that links somewhere huge, which is most of them.
+    # The honest answer is the one the cap was designed to produce: the page is
+    # marked incomplete and the caller treats the target as unverified.
+    client = SequencedStubClient(
+        [
+            _links_page_with_continue(2, "2|aaa", "A"),
+            _links_page_with_continue(2, "2|bbb", "B"),
+        ]
+    )
+
+    result = await client.get_links_for_page_ids([2], max_links_per_page=1)
+
+    assert result[2].titles == {"a"}
+    assert result[2].complete is False
+    # It stopped on its own rather than asking for a page it could not use.
+    assert len(client.requests) == 2
+
+
+async def test_a_broken_token_is_still_an_error_when_no_cap_stopped_the_page() -> None:
+    # The anti-spin guard must not be weakened into a silent short read: with no cap
+    # involved, a token that returns nothing really is broken and the caller has to
+    # hear about it rather than receive a set that looks complete.
+    client = SequencedStubClient(
+        [
+            _links_page_with_continue(2, "9|zzz", "A", "B"),
+            _links_page_with_continue(2, "9|zzz", "A", "B"),
+        ]
+    )
+
+    with pytest.raises(WikipediaError, match="no new links"):
+        await client.get_links_for_page_ids([2], max_links_per_page=50)
+

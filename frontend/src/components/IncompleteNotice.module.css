@@ -1,0 +1,33 @@
+/* A notice, not an error: nothing failed, and the wording above the fold has to
+   make that obvious. `--surface-yellow` is a brand surface rather than a status
+   colour, which is the point - it must not read as the yellow "one-way" finding
+   or the red "missing" one. */
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1.25rem;
+  background: var(--surface-yellow);
+  border: 1px solid var(--hairline-strong);
+  border-left: 3px solid var(--brand-yellow);
+  border-radius: var(--radius);
+}
+
+.title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.body {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-soft);
+}
+
+@media (max-width: 560px) {
+  .notice {
+    padding: 0.85rem 1rem;
+  }
+}

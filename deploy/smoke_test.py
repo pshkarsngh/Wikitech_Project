@@ -337,21 +337,46 @@ def check_links(report: Report, analysis: dict[str, Any]) -> None:
 
 
 def check_missing(report: Report, analysis: dict[str, Any]) -> None:
-    """Phase 6 task 6: missing connections are displayed, and the screen's
-    person/place filter has something to show."""
+    """Phase 6 task 6: missing connections reach the screen, and nothing in the
+    list is one the screen cannot display.
+
+    The previous version of this check also required at least one missing
+    connection to be typed `person` or `place`, on the stated grounds that "the
+    screen filters on those". That premise is wrong: `MissingConnectionsList`
+    offers All / People / Places / **Other** and lists an untyped name without a
+    badge rather than dropping it, so a missing connection is shown whatever the
+    classifier made of it. A missing link with no page id cannot be typed from a
+    MediaWiki short description at all - only a Wikidata hit can type it - so on
+    an article whose missing names have no Wikidata item the check failed against
+    a perfectly healthy deployment. It passed on 27 September 2026 only because
+    one of the same three names happened to resolve that day.
+
+    How well the classifier types names is D4, an open finding that needs its
+    owner, not something a release gate can assert. The invariant that *is*
+    assertable is the one below: every missing connection is missing, and carries
+    an entity type the screen has a filter for, so no filter can hide it.
+    """
 
     def run() -> tuple[bool, str, Any]:
         missing = analysis["missing_connections"]
         _require(bool(missing), "no missing connections found; nothing for the screen to show")
         wrong = [item["title"] for item in missing if item.get("exists") is not False]
         _require(not wrong, f"{len(wrong)} missing connections reported exists=true, e.g. {wrong[:3]}")
-        typed = [item for item in missing if item.get("entity_type") in ("person", "place")]
+        screen_types = {"person", "place", "other"}
+        unlistable = [
+            item["title"] for item in missing if item.get("entity_type") not in screen_types
+        ]
         _require(
-            bool(typed),
-            "no missing connection was typed person or place; the screen filters on those",
+            not unlistable,
+            f"{len(unlistable)} missing connections carry an entity type the screen "
+            f"has no filter for, e.g. {unlistable[:3]}",
         )
+        typed = [item for item in missing if item.get("entity_type") in ("person", "place")]
         named = ", ".join(item["title"] for item in missing[:3])
-        detail = f"{len(missing)} missing ({len(typed)} typed), e.g. {named}"
+        untyped_note = (
+            "" if typed else " (none typed; see D4 - the list still shows them under Other)"
+        )
+        detail = f"{len(missing)} missing ({len(typed)} typed){untyped_note}, e.g. {named}"
         return True, detail, None
 
     report.timed("missing connections are shown", "task 6 - missing", run)
@@ -456,10 +481,37 @@ def check_understandable(report: Report, analysis: dict[str, Any]) -> None:
         described = bool(article.get("description")) or bool(article.get("extract"))
         _require(described, "article carried neither a description nor an extract")
         summary = analysis["summary"]
-        for flag in ("links_truncated", "one_way_truncated", "classify_truncated"):
+        for flag in (
+            "links_truncated",
+            "one_way_truncated",
+            "classify_truncated",
+            # A deadline returns 200 with the article's real links and missing
+            # connections, so the HTTP status cannot tell a partial answer from a
+            # complete one. `aborted` is what says it, and it has to be a real
+            # boolean rather than absent: a missing field is `None`, which is not
+            # a boolean, and the screen would then have no honest value to read.
+            "aborted",
+            "entity_types_incomplete",
+        ):
             _require(
                 isinstance(summary.get(flag), bool),
                 f"summary.{flag} is not a boolean, so a partial answer could look complete",
+            )
+        _require(
+            summary["abort_reason"] is None or isinstance(summary["abort_reason"], str),
+            "summary.abort_reason is neither null nor a string",
+        )
+        # An aborted analysis is a valid answer, not a failure, so it is reported
+        # rather than rejected. A smoke test that failed on one would push an
+        # operator to raise the deadline instead of reading the reason.
+        if summary.get("aborted"):
+            report.add(
+                "analysis completed without hitting its deadline",
+                False,
+                f"the analysis stopped on {summary.get('abort_reason')!r}; counts in this "
+                "report are minimums. Raise ANALYSIS_DEADLINE_SECONDS or pick a smaller "
+                "article if this happens on a normal request",
+                "task 10 - readability",
             )
         detail = (
             f"{article['title']!r}, {summary['total_links']} links checked, "

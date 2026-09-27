@@ -29,6 +29,7 @@ from app.schemas import (
     ResolvedTitle,
 )
 from app.services import classifier
+from app.services.budget import DEADLINE, AnalysisAborted
 from app.services.mediawiki import (
     ArticleLinks,
     ArticleNotFoundError,
@@ -450,17 +451,89 @@ def build_connection_map(
 async def analyze_article(
     client: MediaWikiClient, settings: Settings, title: str
 ) -> AnalysisResult:
-    """Run the full pipeline for one article."""
+    """Run the full pipeline for one article.
+
+    The stages are ordered by what a reader cannot do without. The article and
+    its link graph are what the app is about, and they are resolved first, so a
+    result that survives a deadline still has the article's real links and real
+    missing connections. Entity types and one-way links are extra detail on top
+    and are the parts that get cut off, which is why the budget usually bites
+    here.
+
+    Raises ``AnalysisAborted`` when there is no honest result to return: a
+    disconnect, or a deadline that expired before the graph existed. A caller
+    cannot invent a partial answer from nothing, so neither can this.
+    """
 
     article = await client.get_article(title)
     graph = await build_link_graph(client, settings, article.title)
-    types, described, classify_truncated = await classify_links(client, settings, graph)
-    one_way = await detect_one_way_connections(client, settings, graph)
+
+    # `None` means "this stage never finished", which is not the same as an empty
+    # result. The distinction is the whole point: an unfinished stage must not
+    # report zero findings.
+    types: dict[str, str] | None = None
+    described = 0
+    classify_truncated = False
+    one_way: OneWayResult | None = None
+
+    try:
+        types, described, classify_truncated = await classify_links(
+            client, settings, graph
+        )
+        one_way = await detect_one_way_connections(client, settings, graph)
+    except AnalysisAborted as exc:
+        if exc.reason != DEADLINE:
+            # A disconnected client is not answered. Building a result for one
+            # would spend the rest of the budget to produce bytes nobody reads.
+            raise
+        return _assemble(
+            article,
+            graph,
+            types=types,
+            described=described,
+            classify_truncated=classify_truncated,
+            one_way=one_way,
+            abort_reason=DEADLINE,
+        )
+
+    return _assemble(
+        article,
+        graph,
+        types=types,
+        described=described,
+        classify_truncated=classify_truncated,
+        one_way=one_way,
+        abort_reason=None,
+    )
+
+
+def _assemble(
+    article: ArticleDetail,
+    graph: LinkGraph,
+    *,
+    types: dict[str, str] | None,
+    described: int,
+    classify_truncated: bool,
+    one_way: OneWayResult | None,
+    abort_reason: str | None,
+) -> AnalysisResult:
+    """Join the stages into a result, tolerating whichever ones are missing.
+
+    Everything below is derived from the graph, so the article's links and its
+    missing connections are complete whenever this runs; only the entity types
+    and the one-way check depend on the stages that may not have finished. An
+    absent stage contributes an empty mapping and a flag saying so, never a
+    finding.
+    """
+
+    aborted = abort_reason is not None
+    resolved_types = types or {}
+    checks = one_way if one_way is not None else OneWayResult()
 
     missing = [
         MissingConnection(
             title=item.requested,
-            entity_type=types.get(item.requested, classifier.OTHER),
+            entity_type=resolved_types.get(item.requested, classifier.OTHER),
             source_title=graph.title,
             source_url=graph.url,
         )
@@ -474,23 +547,35 @@ async def analyze_article(
             total_links=graph.total_links,
             total_articles=graph.total_articles,
             total_missing=len(missing),
-            total_one_way=len(one_way.connections),
-            one_way_targets_checked=one_way.checked_count,
-            one_way_truncated=one_way.truncated,
-            one_way_incomplete=one_way.incomplete_count,
+            total_one_way=len(checks.connections),
+            one_way_targets_checked=checks.checked_count,
+            # A stage that never ran checked no targets, which is the same
+            # situation as running out of target budget: some targets were not
+            # examined, so the list is a subset and not a clean bill of health.
+            one_way_truncated=checks.truncated or (aborted and one_way is None),
+            one_way_incomplete=checks.incomplete_count,
             links_truncated=graph.truncated,
             described_links=described,
             classify_truncated=classify_truncated,
-            total_people=sum(1 for value in types.values() if value == classifier.PERSON),
-            total_places=sum(1 for value in types.values() if value == classifier.PLACE),
+            total_people=sum(
+                1 for value in resolved_types.values() if value == classifier.PERSON
+            ),
+            total_places=sum(
+                1 for value in resolved_types.values() if value == classifier.PLACE
+            ),
             missing_people=sum(
                 1 for item in missing if item.entity_type == classifier.PERSON
             ),
             missing_places=sum(
                 1 for item in missing if item.entity_type == classifier.PLACE
             ),
+            aborted=aborted,
+            abort_reason=abort_reason,
+            # Only a stage that did not run is unknown. One that finished keeps
+            # its own truncation flag, which is already about incompleteness.
+            entity_types_incomplete=types is None,
         ),
         missing_connections=missing,
-        one_way_connections=one_way.connections,
-        links=build_extracted_links(graph, types),
+        one_way_connections=checks.connections,
+        links=build_extracted_links(graph, resolved_types),
     )

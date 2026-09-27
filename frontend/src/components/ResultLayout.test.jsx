@@ -42,6 +42,9 @@ const ANALYSIS = {
     total_places: 0,
     missing_people: 0,
     missing_places: 0,
+    aborted: false,
+    abort_reason: null,
+    entity_types_incomplete: false,
   },
   missing_connections: [],
   one_way_connections: [],
@@ -105,5 +108,27 @@ describe('the links tile', () => {
     renderLayout()
     expect(screen.getByText('at least this many, capped by budget')).toBeTruthy()
     expect(screen.queryByText('500 link targets')).toBeNull()
+  })
+})
+
+// The tile tests above are about which number is shown. These are about whether
+// the reader is told the numbers are floors, which is the one thing a truncated
+// analysis cannot leave to the payload.
+describe('an analysis that was cut short', () => {
+  it('warns above the tiles, not below them', () => {
+    withSummary({ aborted: true, abort_reason: 'deadline', total_articles: 120 })
+    renderLayout()
+    const notice = screen.getByRole('status')
+    // A warning under three big numbers is a warning nobody reads. This asserts
+    // it exists on the page, not its position; the ordering is the CSS grid's
+    // job and jsdom has no layout to measure.
+    expect(notice).toBeTruthy()
+    expect(screen.getByText('120')).toBeTruthy()
+  })
+
+  it('shows no warning for a complete analysis', () => {
+    withSummary({ aborted: false, total_articles: 120 })
+    renderLayout()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

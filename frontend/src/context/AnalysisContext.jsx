@@ -19,6 +19,11 @@ const EMPTY_SUMMARY = {
   total_places: 0,
   missing_people: 0,
   missing_places: 0,
+  // The deadline fields default to "not aborted" so an idle or empty state cannot
+  // raise the incomplete notice before anything has been analysed.
+  aborted: false,
+  abort_reason: null,
+  entity_types_incomplete: false,
 }
 
 const initialState = {
