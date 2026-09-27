@@ -1,0 +1,25 @@
+/* A render error blanks the whole tree, so this is the only thing left on screen. It has
+   to stand on its own rather than depend on any layout that is already broken. */
+
+.screen {
+  max-width: 34rem;
+  margin: 3rem auto;
+}
+
+.screen > * {
+  margin-inline: 0;
+}
+
+.reload {
+  display: block;
+  margin-top: 1rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.reload:hover {
+  text-decoration: underline;
+}

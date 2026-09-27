@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 
 import { analyzeArticle } from '../api/client'
 
@@ -10,6 +10,7 @@ const EMPTY_SUMMARY = {
   total_one_way: 0,
   one_way_targets_checked: 0,
   one_way_truncated: false,
+  one_way_incomplete: 0,
   links_truncated: false,
   described_links: 0,
   classify_truncated: false,
@@ -34,6 +35,12 @@ const initialState = {
 export function AnalysisProvider({ children }) {
   const [state, setState] = useState(initialState)
 
+  // Identifies the newest run. A response only owns the screen if it is still the
+  // latest, because two analyses can be in flight at once: submit A, then B, and if B
+  // answers first, A's slower response would otherwise overwrite B's result while the
+  // URL still says B. The ref is stable, so `run` keeps its empty dependency list.
+  const latestRunRef = useRef(0)
+
   // Kept free of `state` so the identity is stable across renders.
   const run = useCallback(async (title) => {
     const trimmed = String(title ?? '').trim()
@@ -46,9 +53,14 @@ export function AnalysisProvider({ children }) {
       return null
     }
 
+    const runId = latestRunRef.current + 1
+    latestRunRef.current = runId
+    const isCurrent = () => runId === latestRunRef.current
+
     setState({ ...initialState, title: trimmed, status: 'loading' })
     try {
       const result = await analyzeArticle(trimmed)
+      if (!isCurrent()) return null
       setState({
         title: result.article.title,
         status: 'ready',
@@ -62,6 +74,7 @@ export function AnalysisProvider({ children }) {
       })
       return result.article.title
     } catch (error) {
+      if (!isCurrent()) return null
       setState({
         ...initialState,
         title: trimmed,

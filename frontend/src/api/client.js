@@ -14,11 +14,17 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, { signal } = {}) {
+async function request(path, options = {}) {
+  // Everything a caller passes has to reach fetch. This used to destructure only
+  // `signal` and rebuild the init object from scratch, which silently discarded
+  // `method` and `body`: analyzeArticle asked for POST and the browser sent GET, and
+  // the backend answered 405 for every analysis. Forward the whole init instead.
+  const { signal, ...init } = options
   let response
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
-      headers: { Accept: 'application/json' },
+      ...init,
+      headers: { Accept: 'application/json', ...init.headers },
       signal,
     })
   } catch (cause) {

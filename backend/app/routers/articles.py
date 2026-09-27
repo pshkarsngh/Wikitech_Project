@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.dependencies import ClientDep, SearchQuery, SettingsDep, TitleQuery
+from app.dependencies import ClientDep, SearchQuery, SettingsDep, TitlesQuery, TitleQuery
 from app.schemas import (
     ArticleDetail,
     ArticleLinksResponse,
@@ -103,13 +103,7 @@ async def get_article_links(
 
 @router.get("/articles/resolve", response_model=ExistsResponse)
 async def check_articles_exist(
-    client: ClientDep,
-    titles: list[str] = Query(
-        min_length=1,
-        max_length=50,
-        description="Up to 50 article titles, reported as existing or missing",
-        examples=["Ada Lovelace", "Ada Lovelaces husband"],
-    ),
+    client: ClientDep, titles: TitlesQuery
 ) -> ExistsResponse:
     """Article existence checking. A redirect counts as existing."""
 

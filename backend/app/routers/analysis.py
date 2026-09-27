@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from app import repository
@@ -41,16 +41,34 @@ def _upstream_error(exc: WikipediaError) -> HTTPException:
 
 @router.post("/analyze", response_model=AnalysisResult)
 async def analyze(
-    client: ClientDep, settings: SettingsDep, payload: AnalyzeRequest
+    client: ClientDep,
+    settings: SettingsDep,
+    response: Response,
+    payload: AnalyzeRequest,
 ) -> AnalysisResult:
-    """Full analysis for one article: links, missing and one-way connections."""
+    """Full analysis for one article: links, missing and one-way connections.
+
+    Served from the cache when a recent one exists. An analysis of a real article costs
+    25-35 calls to Wikimedia, and that budget is per deployment and shared by every user
+    (docs/ARCHITECTURE.md section 12), so recomputing an answer that was computed an hour
+    ago spends someone else's quota to return the same bytes. ``X-Cache`` says which path
+    answered, because a silently cached result is indistinguishable from a fresh one.
+    """
+
+    cached = repository.cached_analysis(
+        payload.title, ttl_seconds=settings.analysis_cache_ttl_seconds
+    )
+    if cached is not None:
+        response.headers["X-Cache"] = "hit"
+        return cached
 
     try:
         result = await analyze_article(client, settings, payload.title)
     except WikipediaError as exc:
         raise _upstream_error(exc) from exc
 
-    repository.store_analysis(result)
+    response.headers["X-Cache"] = "miss"
+    repository.store_analysis(result, settings=settings)
     return result
 
 

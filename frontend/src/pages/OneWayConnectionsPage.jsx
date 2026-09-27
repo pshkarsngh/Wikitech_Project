@@ -12,6 +12,7 @@ export default function OneWayConnectionsPage() {
           connections={oneWayConnections}
           checkedCount={summary.one_way_targets_checked}
           truncated={summary.one_way_truncated}
+          incompleteCount={summary.one_way_incomplete}
         />
       )}
     </ResultLayout>

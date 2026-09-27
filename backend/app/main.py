@@ -8,7 +8,9 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app import db
 from app.config import get_settings
@@ -65,6 +67,19 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Middleware order matters and is not alphabetical. Starlette runs these outside-in in
+    # reverse registration order, so the list below registers innermost-first:
+    #
+    #   1. CORS - the existing dev-server allowance, unchanged and still the outermost
+    #      concern for a browser on :5173.
+    #   2. TrustedHost - refuses a bad Host header before any routing work happens, so a
+    #      Host-header attack never reaches a route. See settings.allowed_hosts.
+    #   3. GZip - an analysis response is a few hundred KB of JSON and the SPA is served
+    #      by nginx, but /api is proxied through and was going out uncompressed.
+    #
+    # HTTPSRedirectMiddleware is deliberately absent. The backend is behind nginx and
+    # receives plain HTTP on the container network, so it would redirect to itself in a
+    # loop. It belongs at the TLS terminator, not here.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -72,6 +87,9 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
+    if settings.allowed_hosts:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     @app.exception_handler(WikipediaError)
     async def wikipedia_error_handler(_: Request, exc: WikipediaError) -> JSONResponse:

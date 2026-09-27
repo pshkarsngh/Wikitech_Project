@@ -2,15 +2,37 @@
 # /etc/nginx/templates/default.conf.template so the base image expands
 # ${API_UPSTREAM} from the environment before nginx starts.
 #
-# Two jobs, both load-bearing:
+# Three jobs, all load-bearing:
 #   1. serve the SPA, including deep links, which react-router owns;
 #   2. reverse-proxy /api to the backend on the same origin, so the browser
 #      never makes a cross-origin request and CORS stays out of the request
-#      path in a deployed environment.
+#      path in a deployed environment;
+#   3. refuse the traffic patterns that turn a public read-only API into
+#      someone else's bandwidth bill.
+#
+# The security headers live in nginx-security-headers.conf and are `include`d
+# at every level that sets a header of its own. See the comment in that file:
+# nginx drops inherited add_header directives as soon as the current level
+# defines one, so putting them in `server` alone would strip them from
+# /assets/ and from index.html - the two responses that most need protecting.
 
 upstream fastapi {
     server ${API_UPSTREAM};
 }
+
+# Rate limiting is keyed on the peer address, which is nginx itself here because the
+# browser connects to it directly. The zones are sized in requests rather than bytes, so
+# the memory cost is bounded by concurrent clients and not by request volume.
+#
+# The budgets come from Wikimedia's published limits rather than from taste. An
+# unauthenticated client with a compliant User-Agent gets 200 requests/minute, and one
+# analysis of a real article costs roughly 25-35 of them, so the whole deployment can
+# serve about 6-8 analyses per minute. See docs/ARCHITECTURE.md section 12. These numbers
+# are deliberately not higher: a 429 costs a user one retry, a block from Wikimedia costs
+# the deployment its API access.
+limit_req_zone $binary_remote_addr zone=analyze:10m rate=6r/m;
+limit_req_zone $binary_remote_addr zone=read:10m rate=60r/m;
+limit_conn_zone $binary_remote_addr zone=perip:10m;
 
 server {
     listen 80;
@@ -19,47 +41,99 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Advertises the nginx version on every response and every error page. Not a real
+    # control on its own, but it is free and it removes the low-hanging fruit that
+    # automated scanners look for first.
+    server_tokens off;
+
+    # The only request body this application accepts is {"title": "..."} capped at 512
+    # characters. 64k is generous for that and refuses the multi-megabyte bodies that
+    # exist only to exhaust memory. It has to be set here rather than in a location:
+    # nginx only enforces the limit once it has selected a location, so a limit that lives
+    # only in some branches is not a limit.
+    client_max_body_size 64k;
+    client_body_timeout 15s;
+    client_header_timeout 15s;
+
+    # One browser opening a handful of tabs plus a few API calls is well under 20.
+    limit_conn perip 20;
+
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
     gzip_types text/plain text/css application/javascript application/json
                image/svg+xml application/manifest+json;
 
-    # Vite emits content-hashed filenames under /assets, so they are immutable
-    # and can be cached for a year. index.html is excluded from that treatment
-    # so a redeploy takes effect on the next load.
+    # .env, .git, .htaccess and friends. The SPA has no legitimate dotfile, and a stray one
+    # in the build context is a credential leak waiting to be requested by name. well-known
+    # is excluded because ACME challenges and apple-app-site-association live there.
+    location ~ /\.(?!well-known) {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    # Server-side template and source artefacts that have no business being served.
+    location ~* \.(?:bak|conf|dist|env|ini|log|sh|sql|swp|ya?ml)$ {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    # Vite emits content-hashed filenames under /assets, so they are immutable and can be
+    # cached for a year. index.html is excluded from that treatment so a redeploy takes
+    # effect on the next load.
     location /assets/ {
+        limit_req zone=read burst=40 nodelay;
         expires 1y;
         add_header Cache-Control "public, immutable";
+        # This location sets an add_header of its own, which cancels every inherited one.
+        # Without this include the whole security header set is absent from the bundles.
+        include /etc/nginx/nginx-security-headers.conf;
         try_files $uri =404;
     }
 
     location = /index.html {
+        limit_req zone=read burst=20 nodelay;
         add_header Cache-Control "no-store";
+        include /etc/nginx/nginx-security-headers.conf;
     }
 
-    # proxy_pass without a trailing path keeps the original /api/... URI, which
-    # is what the backend routes expect. A trailing slash here would strip the
-    # prefix and every route would 404.
-    location /api/ {
-        proxy_pass http://fastapi;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Connection "";
+    # The expensive endpoints. Everything the app does is public Wikipedia data, so the
+    # only thing to protect is the operator's own request budget - and Wikimedia's.
+    location = /api/analyze {
+        limit_req zone=analyze burst=3 nodelay;
+        limit_req_status 429;
+        include /etc/nginx/nginx-proxy-api.conf;
+    }
 
-        # One analysis fans out to the MediaWiki API in batches, so the first
-        # byte can take far longer than the 60s default. The backend aborts its
-        # own upstream work on WikipediaError; this only covers slow success.
-        proxy_connect_timeout 10s;
-        proxy_send_timeout 120s;
-        proxy_read_timeout 120s;
+    location /api/connections/ {
+        limit_req zone=analyze burst=3 nodelay;
+        limit_req_status 429;
+        include /etc/nginx/nginx-proxy-api.conf;
+    }
+
+    location /api/ {
+        limit_req zone=read burst=20 nodelay;
+        limit_req_status 429;
+        include /etc/nginx/nginx-proxy-api.conf;
+    }
+
+    location = /api/health {
+        # The Docker healthcheck hits this every 30s from inside the network, and
+        # smoke_test.py hits it from the host. Neither should be able to spend an
+        # analysis budget, so it gets the read zone rather than the analyze zone.
+        limit_req zone=read burst=40 nodelay;
+        include /etc/nginx/nginx-proxy-api.conf;
     }
 
     # Unknown paths are client-side routes, not missing files.
     location / {
+        limit_req zone=read burst=40 nodelay;
         try_files $uri $uri/ /index.html;
     }
+
+    # Response headers for the SPA itself. The include is repeated in the two locations
+    # above that add a Cache-Control of their own, because they do not inherit from here.
+    include /etc/nginx/nginx-security-headers.conf;
 }

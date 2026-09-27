@@ -42,9 +42,23 @@ class Article(Base):
     url: Mapped[str | None] = mapped_column(Text)
     length: Mapped[int | None] = mapped_column(Integer)
 
+    # The computed analysis, serialised by pydantic. Stored as text rather than JSONB so
+    # pydantic stays the single authority on the schema and the column carries no
+    # dialect-specific behaviour - which also keeps the SQLite fallback that
+    # ARCHITECTURE.md section 11.8 promises actually reachable.
+    #
+    # It is a cache of a whole answer rather than a bag of facts, and that is deliberate.
+    # `article_links` cannot be read back into a response: it records the *resolved*
+    # target title, and the requested one is what distinguishes a direct link from a
+    # redirect, so re-deriving from it would quietly change the answer.
+    analysis_payload: Mapped[str | None] = mapped_column(Text)
+
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Set in the same transaction as `analysis_payload`, so it is exactly "when this cached
+    # analysis was produced" and cannot drift from it. Doubles as the freshness marker for
+    # the read path.
 
     outgoing_links: Mapped[list["ArticleLink"]] = relationship(
         back_populates="source", cascade="all, delete-orphan"

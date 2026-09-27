@@ -95,6 +95,9 @@ class OneWayResult:
     links_back: dict[str, bool] = field(default_factory=dict)
     checked_count: int = 0
     truncated: bool = False
+    # Targets whose outgoing links could not be read in full, so whether they link back
+    # is unknown rather than false. Counted, never asserted as one-way.
+    incomplete_count: int = 0
 
 
 async def build_link_graph(
@@ -202,6 +205,13 @@ async def detect_one_way_connections(
 
     Only the first ``one_way_max_targets`` existing targets are checked, because
     each one needs its own request to the MediaWiki API.
+
+    A target whose outgoing links could not be read in full is **not** reported as
+    one-way. MediaWiki caps a property query at 500 links for a client without the
+    ``apihighlimits`` right, so a target with a longer article has a tail this check
+    cannot see; if the seed sits in that tail the connection looks one-way and is not.
+    Reporting it would put a verifiable accusation on screen with no evidence behind it,
+    so an unread target is counted as unknown instead.
     """
 
     result = OneWayResult()
@@ -234,9 +244,16 @@ async def detect_one_way_connections(
         if target_links is None:
             continue
 
-        result.checked_count += 1
-        links_back = seed_key in target_links
         label = item.title or item.requested
+
+        if not target_links.complete:
+            # Unknown, not false. Leaving it out of `links_back` also makes the
+            # connection map draw its edge as unchecked rather than one-way.
+            result.incomplete_count += 1
+            continue
+
+        result.checked_count += 1
+        links_back = seed_key in target_links.titles
         result.links_back[title_key(label)] = links_back
 
         if not links_back:
@@ -425,6 +442,7 @@ async def analyze_article(
             total_one_way=len(one_way.connections),
             one_way_targets_checked=one_way.checked_count,
             one_way_truncated=one_way.truncated,
+            one_way_incomplete=one_way.incomplete_count,
             links_truncated=graph.truncated,
             described_links=described,
             classify_truncated=classify_truncated,

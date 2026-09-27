@@ -43,3 +43,19 @@ SearchQuery = Annotated[
     ),
     StringConstraints(strip_whitespace=True, min_length=1),
 ]
+
+# A batch of titles to resolve. The list itself is bounded, and so is each element:
+# `Query(max_length=...)` on a `list[str]` constrains how many there are and does nothing
+# about how long each one is, so without this a caller could send 50 megabyte titles and
+# have every one of them forwarded to MediaWiki in a single `titles=` parameter.
+BatchedTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)]
+
+TitlesQuery = Annotated[
+    list[BatchedTitle],
+    Query(
+        min_length=1,
+        max_length=50,
+        description="Up to 50 article titles, reported as existing or missing",
+        examples=["Ada Lovelace", "Ada Lovelaces husband"],
+    ),
+]

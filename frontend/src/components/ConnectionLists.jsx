@@ -160,20 +160,38 @@ export function MissingConnectionsList({
   )
 }
 
-export function OneWayConnectionsList({ connections, checkedCount, truncated }) {
+export function OneWayConnectionsList({
+  connections,
+  checkedCount,
+  truncated,
+  incompleteCount = 0,
+}) {
+  // A target whose links could not be read in full is not one-way, it is unknown. Saying
+  // so is the difference between "we checked and it does not link back" and "we could not
+  // finish reading it", and only the first is an accusation.
+  const subtitle = (() => {
+    const checked = checkedCount
+      ? ` ${checkedCount} target${checkedCount === 1 ? '' : 's'} checked.`
+      : ''
+    const unread = incompleteCount
+      ? ` ${incompleteCount} target${incompleteCount === 1 ? '' : 's'} could not be read in full, so whether they link back is unknown.`
+      : ''
+    return `These articles are linked from the source article but do not link back.${checked}${unread}`
+  })()
+
   return (
     <Card
       title="One-Way Connections"
-      subtitle={
-        checkedCount
-          ? `These articles are linked from the source article but do not link back. ${checkedCount} target${checkedCount === 1 ? '' : 's'} checked.`
-          : 'These articles are linked from the source article but do not link back.'
-      }
+      subtitle={subtitle}
     >
       {connections.length === 0 ? (
         <EmptyState
           title="No one-way connections found"
-          description="Every target article that was checked links back to the source article."
+          description={
+            incompleteCount
+              ? 'Every target whose links could be read in full links back to the source article. Some targets had more links than one request can return, so they are unverified rather than mutual.'
+              : 'Every target article that was checked links back to the source article.'
+          }
         />
       ) : (
         <>
@@ -201,6 +219,14 @@ export function OneWayConnectionsList({ connections, checkedCount, truncated }) 
             <p className={styles.note}>
               Only the first targets were checked. Raise <code>ONE_WAY_MAX_TARGETS</code>{' '}
               in <code>backend/.env</code> to check more.
+            </p>
+          )}
+          {incompleteCount > 0 && (
+            <p className={styles.note}>
+              {incompleteCount} target{incompleteCount === 1 ? '' : 's'} linked more
+              articles than one API request can return, so their reverse links were not
+              read in full and they are <strong>unverified</strong> rather than mutual.
+              Authenticating as a bot raises that limit from 500 links to 5000.
             </p>
           )}
         </>

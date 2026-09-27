@@ -66,6 +66,18 @@ CREATE INDEX IF NOT EXISTS ix_analysis_runs_seed_title
 -- that was deleted from Wikipedia in the meantime, and the run history should
 -- survive that.
 
+-- Additive changes to a table that already exists.
+--
+-- `CREATE TABLE IF NOT EXISTS` above is a no-op against a table that already exists
+-- with an older shape, and `create_all()` only ever creates missing tables. So a column
+-- added to models.py after the first deploy never reached an existing database, and
+-- nothing reported it. `ADD COLUMN IF NOT EXISTS` is the statement that does work against
+-- an existing table, and it is still additive-only with no DROP, which is the property
+-- docs/ROLLBACK.md section 1 depends on.
+--
+-- Add new columns here, in this block, not to the CREATE TABLE above.
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS analysis_payload TEXT;
+
 COMMIT;
 
 -- Example queries

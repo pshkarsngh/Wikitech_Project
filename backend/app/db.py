@@ -42,11 +42,15 @@ def get_engine() -> Engine | None:
 
 
 @contextmanager
-def session_scope() -> Iterator[Session | None]:
+def session_scope(*, read_only: bool = False) -> Iterator[Session | None]:
     """Yield a session, or ``None`` when persistence is disabled.
 
     Failures while committing are logged and ignored: the caller has already
     built its response and the cache is only an optimisation.
+
+    ``read_only`` yields the same session but never commits, for the cache lookup. The
+    read path has nothing to write, and a read-only scope must not be able to leave a
+    half-finished unit of work behind in the autocommit-less session it was handed.
     """
 
     if _session_factory is None:
@@ -56,7 +60,8 @@ def session_scope() -> Iterator[Session | None]:
     session = _session_factory()
     try:
         yield session
-        session.commit()
+        if not read_only:
+            session.commit()
     except Exception:  # noqa: BLE001 - persistence must never break a request
         logger.exception("Database write failed, continuing without cache")
         session.rollback()

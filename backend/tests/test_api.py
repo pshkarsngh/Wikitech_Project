@@ -128,6 +128,40 @@ def test_check_articles_exist(client: TestClient) -> None:
     assert body["titles"][0]["exists"] is True
 
 
+def test_a_single_oversized_title_is_rejected(client: TestClient) -> None:
+    # `Query(max_length=50)` on the list constrains how many titles there are, not how
+    # long each one is. Without a per-item bound a caller could send 50 very long titles
+    # and have every one forwarded to MediaWiki in a single `titles=` parameter.
+    response = client.get(
+        "/api/articles/resolve", params=[("titles", "x" * 513)]
+    )
+    assert response.status_code == 422
+
+
+def test_a_title_at_the_limit_is_accepted(client: TestClient) -> None:
+    # The cap is a bound and not a truncation: 512 characters is the same limit the
+    # single-article routes use, and a title that long is still a title.
+    response = client.get(
+        "/api/articles/resolve", params=[("titles", "x" * 512)]
+    )
+    assert response.status_code == 200
+    assert response.json()["titles"][0]["requested"] == "x" * 512
+
+
+def test_a_blank_title_is_rejected(client: TestClient) -> None:
+    response = client.get(
+        "/api/articles/resolve", params=[("titles", "   ")]
+    )
+    assert response.status_code == 422
+
+
+def test_more_than_fifty_titles_is_rejected(client: TestClient) -> None:
+    response = client.get(
+        "/api/articles/resolve", params=[("titles", f"Article {n}") for n in range(51)]
+    )
+    assert response.status_code == 422
+
+
 def test_check_articles_exist_returns_structured_states(client: TestClient) -> None:
     response = client.get(
         "/api/articles/resolve", params=[("titles", ENGINE), ("titles", NOVEL)]
@@ -170,6 +204,7 @@ def test_analyze(client: TestClient) -> None:
         "total_one_way": 1,
         "one_way_targets_checked": 2,
         "one_way_truncated": False,
+        "one_way_incomplete": 0,
         "links_truncated": False,
         "described_links": 2,
         "classify_truncated": False,
@@ -178,6 +213,69 @@ def test_analyze(client: TestClient) -> None:
         "missing_people": 0,
         "missing_places": 1,
     }
+
+
+def test_analyze_says_whether_it_came_from_the_cache(client: TestClient) -> None:
+    # A silently cached result is indistinguishable from a fresh one, so the response has
+    # to say which path answered. With no database configured this is always a miss, which
+    # is exactly what proves the header is wired to the decision and not hardcoded.
+    response = client.post("/api/analyze", json={"title": ADA})
+    assert response.headers["X-Cache"] == "miss"
+
+
+def test_analyze_does_not_consult_the_cache_when_the_ttl_is_zero() -> None:
+    # A zero TTL has to mean "always recompute", not "always serve whatever is there".
+    app = create_app()
+    app.state.settings = Settings(database_url="", analysis_cache_ttl_seconds=0)
+    app.state.wikipedia = FakeWikipediaClient()
+
+    with TestClient(app) as zero_ttl:
+        response = zero_ttl.post("/api/analyze", json={"title": ADA})
+
+    assert response.status_code == 200
+    assert response.headers["X-Cache"] == "miss"
+
+
+def test_a_cached_analysis_answers_without_calling_wikipedia() -> None:
+    """The point of the read path: a repeat request costs no upstream calls at all.
+
+    The fake raises if anything reaches for Wikipedia, so "the response came back" is
+    already the proof that the cache answered - no counter needed.
+    """
+
+    from app.schemas import AnalysisResult
+
+    class ExplodingWikipedia(FakeWikipediaClient):
+        async def resolve_titles(self, titles):
+            raise AssertionError("the cache did not answer and Wikipedia was contacted")
+
+    cached = AnalysisResult(
+        article={"page_id": 1, "title": "Cached Result", "url": None, "exists": True},
+        generated_at="2026-09-27T00:00:00Z",
+        summary={},
+        missing_connections=[],
+        one_way_connections=[],
+        links=[],
+    )
+
+    import app.routers.analysis as analysis_router
+
+    original = analysis_router.repository.cached_analysis
+    analysis_router.repository.cached_analysis = lambda *a, **k: cached
+    try:
+        app = create_app()
+        app.state.settings = Settings(database_url="")
+        app.state.wikipedia = ExplodingWikipedia()
+        with TestClient(app) as client:
+            response = client.post("/api/analyze", json={"title": ADA})
+    finally:
+        analysis_router.repository.cached_analysis = original
+
+    assert response.status_code == 200
+    assert response.headers["X-Cache"] == "hit"
+    # The cached answer is what came back, not a recomputed one.
+    assert response.json()["article"]["title"] == "Cached Result"
+    assert response.json()["generated_at"] == "2026-09-27T00:00:00Z"
 
 
 def test_missing_connections(client: TestClient) -> None:

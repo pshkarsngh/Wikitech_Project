@@ -35,6 +35,16 @@ services:
     # exposing it would put an unauthenticated port on the host for no reason.
     expose:
       - "5432"
+    # Docker's default json-file driver does not rotate, and `db.ping()` logs a full
+    # traceback on every failure, so an outage writes one to an unbounded file every 30
+    # seconds from the healthcheck alone. Docker's docs say to use `local` to prevent disk
+    # exhaustion; dual logging keeps `docker logs` working against a rotating cache.
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
 
   api:
     build:
@@ -46,7 +56,14 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-staging-only-change-me}@db:5432/find_missing
+      # `connect_timeout` is load-bearing, and for the same reason production sets it at
+      # docker-compose.production.yml: `create_all()` runs on the app's lifespan *before*
+      # uvicorn accepts connections, so a host that blackholes rather than refuses packets
+      # blocks on TCP SYN retries for about two minutes - past the image healthcheck's
+      # budget, so `web` never starts and no log line explains why. Five seconds turns an
+      # unbounded hang into a logged failure the app then survives, which is the
+      # documented contract: a database problem must never fail a request.
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-staging-only-change-me}@db:5432/find_missing?connect_timeout=5
       # The SPA is served same-origin through nginx, so nothing cross-origin is
       # expected. This is here for direct port access while debugging UAT.
       CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
@@ -57,6 +74,12 @@ services:
     # through nginx. This is how smoke_test.py is pointed at the backend alone.
     ports:
       - "127.0.0.1:8081:8000"
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
 
   web:
     build:
@@ -72,6 +95,12 @@ services:
       API_UPSTREAM: api:8000
     ports:
       - "8080:80"
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
 
 volumes:
   staging-pgdata:

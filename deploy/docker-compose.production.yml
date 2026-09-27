@@ -36,6 +36,17 @@ services:
       start_period: 30s
     expose:
       - "5432"
+    # Docker's default json-file driver does not rotate, and `db.ping()` logs a full
+    # traceback on every failure, so an outage writes one to an unbounded file every 30
+    # seconds from the healthcheck alone. Docker's docs say to use `local` to prevent disk
+    # exhaustion; dual logging keeps `docker logs` working against a rotating cache, which
+    # deploy/ROLLBACK.md section 4 relies on.
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
 
   api:
     image: ${API_IMAGE:-find-missing-api}:${RELEASE_TAG:-latest}
@@ -64,6 +75,12 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-[]}
     expose:
       - "8000"
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
 
   web:
     image: ${WEB_IMAGE:-find-missing-web}:${RELEASE_TAG:-latest}
@@ -80,6 +97,12 @@ services:
       API_UPSTREAM: api:8000
     ports:
       - "${WEB_PORT:-80}:80"
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
 
 volumes:
   pgdata:

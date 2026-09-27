@@ -9,6 +9,7 @@ from app.services.analysis import (
     STATUS_MISSING,
     STATUS_MUTUAL,
     STATUS_ONE_WAY,
+    STATUS_UNCHECKED,
     analyze_article,
     build_connection_map,
     build_link_graph,
@@ -16,6 +17,7 @@ from app.services.analysis import (
     detect_missing_connections,
     detect_one_way_connections,
 )
+from app.services.mediawiki import PageLinks
 from tests.fake_wikipedia import ADA, ENGINE, LONDON, NOVEL, VILLAGE, FakeWikipediaClient
 
 
@@ -73,6 +75,114 @@ async def test_one_way_needs_a_page_id(settings: Settings) -> None:
 
     assert result.connections == []
     assert result.checked_count == 0
+
+
+async def test_a_target_whose_links_could_not_be_read_in_full_is_not_called_one_way(
+    settings: Settings,
+) -> None:
+    # The bug this guards: MediaWiki caps a property query at 500 links, so a longer
+    # target has a tail the check cannot see. If the seed sits in that tail the
+    # connection looks one-way and is not, and the API used to say so with no evidence.
+    client = FakeWikipediaClient()
+    original = client.get_links_for_page_ids
+
+    async def truncate_the_target(page_ids, *, max_links_per_page: int = 500):
+        resolved = await original(page_ids, max_links_per_page=max_links_per_page)
+        return {
+            page_id: PageLinks(titles=entry.titles, complete=False)
+            for page_id, entry in resolved.items()
+        }
+
+    client.get_links_for_page_ids = truncate_the_target  # type: ignore[method-assign]
+    graph = await build_link_graph(client, settings, ADA)
+
+    result = await detect_one_way_connections(client, settings, graph)
+
+    # London does not link back, but that is not knowable from a short read.
+    assert result.connections == []
+    assert result.links_back == {}
+    assert result.checked_count == 0
+    assert result.incomplete_count == 2
+
+
+async def test_an_unreadable_target_leaves_the_readable_ones_verifiable(
+    settings: Settings,
+) -> None:
+    client = FakeWikipediaClient()
+    original = client.get_links_for_page_ids
+
+    async def truncate_london_only(page_ids, *, max_links_per_page: int = 500):
+        resolved = await original(page_ids, max_links_per_page=max_links_per_page)
+        return {
+            page_id: (
+                PageLinks(titles=entry.titles, complete=False)
+                if page_id == 3
+                else entry
+            )
+            for page_id, entry in resolved.items()
+        }
+
+    client.get_links_for_page_ids = truncate_london_only  # type: ignore[method-assign]
+    graph = await build_link_graph(client, settings, ADA)
+
+    result = await detect_one_way_connections(client, settings, graph)
+
+    # The Analytical Engine was read in full and does link back, so it is still mutual.
+    assert result.links_back == {"analytical engine": True}
+    assert result.checked_count == 1
+    assert result.incomplete_count == 1
+    assert result.connections == []
+
+
+async def test_the_summary_reports_how_many_targets_could_not_be_verified(
+    settings: Settings,
+) -> None:
+    client = FakeWikipediaClient()
+    original = client.get_links_for_page_ids
+
+    async def truncate_the_target(page_ids, *, max_links_per_page: int = 500):
+        resolved = await original(page_ids, max_links_per_page=max_links_per_page)
+        return {
+            page_id: PageLinks(titles=entry.titles, complete=False)
+            for page_id, entry in resolved.items()
+        }
+
+    client.get_links_for_page_ids = truncate_the_target  # type: ignore[method-assign]
+
+    result = await analyze_article(client, settings, ADA)
+
+    assert result.summary.one_way_incomplete == 2
+    assert result.summary.one_way_targets_checked == 0
+    assert result.summary.total_one_way == 0
+
+
+async def test_an_unverified_target_is_drawn_as_unchecked_not_one_way(
+    settings: Settings,
+) -> None:
+    client = FakeWikipediaClient()
+    original = client.get_links_for_page_ids
+
+    async def truncate_london_only(page_ids, *, max_links_per_page: int = 500):
+        resolved = await original(page_ids, max_links_per_page=max_links_per_page)
+        return {
+            page_id: (
+                PageLinks(titles=entry.titles, complete=False)
+                if page_id == 3
+                else entry
+            )
+            for page_id, entry in resolved.items()
+        }
+
+    client.get_links_for_page_ids = truncate_london_only  # type: ignore[method-assign]
+    graph = await build_link_graph(client, settings, ADA)
+    missing, types = await detect_missing_connections(client, settings, graph)
+    one_way = await detect_one_way_connections(client, settings, graph)
+
+    map_ = build_connection_map(graph, missing, one_way, types, settings)
+
+    london = next(node for node in map_.nodes if node.label == LONDON)
+    edge = next(edge for edge in map_.edges if edge.target == london.id)
+    assert edge.status == STATUS_UNCHECKED
 
 
 async def test_analyze_article_summary(settings: Settings) -> None:

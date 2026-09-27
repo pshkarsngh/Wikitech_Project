@@ -33,4 +33,13 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 # CORS_ORIGINS and DATABASE_URL are supplied at run time. The database stays
 # optional: an empty DATABASE_URL boots the app with persistence disabled.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+#
+# --forwarded-allow-ips is a narrow allow-list rather than "*". uvicorn trusts
+# X-Forwarded-For from any source when it is "*", and that header is what the nginx
+# rate limiter keys on, so a wildcard would let a client forge its own limit bucket.
+# Only nginx is meant to reach this container, so only nginx is trusted. The ranges
+# are the private ones a Docker compose network sits in, so this does not have to be
+# re-pinned per host.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--proxy-headers", \
+     "--forwarded-allow-ips", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1"]

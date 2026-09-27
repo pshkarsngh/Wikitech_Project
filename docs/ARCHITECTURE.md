@@ -642,9 +642,36 @@ support the core workflow, what replaces it?
   invalidated by re-analysis.
 * External API timeout value. **Resolved:** 20s, `http_timeout_seconds`
   (`config.py:27`), with two attempts and a 1s gap in `mediawiki.py`.
-* External API retry count and backoff strategy. **Resolved:** two attempts, fixed
-  1s sleep. No exponential backoff, which is a possible improvement rather than a
-  gap.
+* External API retry count and backoff strategy. **Resolved:** two attempts. The delay is
+  the `Retry-After` header when the upstream sends one, otherwise 1s. `Retry-After` is
+  parsed in both the seconds and HTTP-date forms, because Wikimedia asks clients to respect
+  it on a 429 and a fixed 1s re-enters the same limiter and is nearly guaranteed to be
+  refused again.
+* **Wikimedia API rate limits. Resolved and binding, as of 27 September 2026.** Recorded
+  here because they are external, they were new in 2026, Wikimedia states they are
+  "subject to experimentation and change", and nothing in the repository would otherwise
+  explain why the settings look the way they do. Source:
+  <https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits>.
+  - Concurrent requests: **3 or fewer**. `max_concurrent_requests` defaults to 3. It was 4,
+    which is over the published limit.
+  - Rate: **200 requests/minute** for an unauthenticated client with a compliant
+    `User-Agent`; 10/minute if the client is unidentified; an authenticated request from an
+    account with a bot flag is **exempt**.
+  - `maxlag` is sent on every request, so a busy wiki refuses the request rather than
+    queueing it and turning into a slow success.
+  - One analysis costs roughly 25–35 requests — counted from `Chandni Chowk`: 444 links,
+    441 existing, 3 missing — so **the deployment can serve about 6–8 analyses per minute
+    in total, shared by every user.** This is a capacity ceiling, not a tuning knob, and no
+    amount of inbound rate limiting raises it.
+  - A MediaWiki **bot password** (`Special:BotPasswords`) makes the deployment exempt from
+    the rate limit and grants `apihighlimits`, which raises the property-query ceiling from
+    500 results to 5000. That is the recommended fix, and it also removes the 500-link
+    ceiling on the one-way check. **Not yet done:** it needs an account, which is a person's
+    decision, and it adds one secret to the environment.
+  - `prop=links` `pllimit=max` is capped at **500** for a client without `apihighlimits`
+    (<https://www.mediawiki.org/wiki/API:Properties>). `get_links_for_page_ids` therefore
+    paginates and reports per-page completeness, and a target whose links could not be read
+    in full is counted as unverified rather than reported as one-way.
 * Logging platform. **Open.** Logs go to stdout and Docker captures them. No
   aggregation or retention.
 * Monitoring platform. **Open.** Nothing is configured; see §11.6.

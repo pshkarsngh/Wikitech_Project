@@ -15,6 +15,7 @@ from app.schemas import ArticleDetail, ResolvedTitle, SearchResultItem
 from app.services.mediawiki import (
     ArticleLinks,
     ArticleNotFoundError,
+    PageLinks,
     normalize_title,
     title_key,
 )
@@ -132,7 +133,13 @@ class FakeWikipediaClient:
     async def get_links_for_page_ids(self, page_ids, *, max_links_per_page: int = 500):
         ids = [int(page_id) for page_id in page_ids if page_id]
         self.reverse_calls.append(ids)
-        return {page_id: {title_key(t) for t in OUTGOING.get(page_id, [])} for page_id in ids}
+        return {
+            page_id: PageLinks(
+                titles={title_key(t) for t in OUTGOING.get(page_id, [])},
+                complete=True,
+            )
+            for page_id in ids
+        }
 
     async def get_page_descriptions(self, page_ids) -> dict[int, str]:
         # An article's own short description is what identifies it as a person or

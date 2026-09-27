@@ -11,6 +11,8 @@ import asyncio
 import logging
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -26,6 +28,13 @@ _ARTICLE_PATH_PREFIX = "/wiki/"
 _LINKS_PROP_LIMIT = "max"
 _MAX_TITLES_PER_REQUEST = 50
 _MAX_REDIRECTS = 1
+# Wikimedia asks API clients to cap concurrent requests at three or fewer, and to send
+# `maxlag` so a request is refused rather than queued when the servers are loaded. Both
+# are documented at https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits and
+# https://www.mediawiki.org/wiki/API:Etiquette. The limits are external and were new in
+# 2026; treat them as a policy, not a tunable.
+_MAX_LAG_SECONDS = 5
+_RETRY_BACKOFF_SECONDS = 1.0
 
 
 class WikipediaError(RuntimeError):
@@ -60,6 +69,33 @@ def wiki_host(url: str | None) -> str:
     return urlsplit(url).netloc.lower() if url else ""
 
 
+def _retry_delay(response: Any, *, default: float) -> float:
+    """Seconds to wait before retrying, from the response's ``Retry-After`` header.
+
+    Wikimedia asks API clients to respect ``Retry-After`` on a 429 rather than retrying on
+    their own schedule. The header is either a delay in seconds or an HTTP date, so the
+    date form is parsed rather than assumed away; anything unparseable falls back to
+    ``default`` instead of failing the request over a header.
+    """
+
+    raw = response.headers.get("retry-after") if response.headers else None
+    if not raw:
+        return default
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        pass
+    try:
+        when = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        return default
+    if when is None:
+        return default
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+
+
 def is_internal_article_link(url: str | None, *, host: str) -> bool:
     """True when a link target is an article on the same wiki.
 
@@ -87,6 +123,21 @@ class ArticleLinks:
     url: str | None
     links: list[str]
     truncated: bool
+
+
+@dataclass
+class PageLinks:
+    """One page's outgoing links, and whether the whole set was seen.
+
+    ``complete`` is the point of this type. MediaWiki caps a property query at 500 results
+    for a client without the ``apihighlimits`` right, so a page with more links than that
+    has a tail this request cannot reach. Reporting the links without saying so is how a
+    one-way check ends up accusing an article of not linking back when it does, so a
+    truncated answer has to travel with the answer.
+    """
+
+    titles: set[str]
+    complete: bool
 
 
 class MediaWikiClient:
@@ -117,16 +168,29 @@ class MediaWikiClient:
         self, params: dict[str, Any], *, endpoint: str | None = None
     ) -> dict[str, Any]:
         url = endpoint or self._settings.wiki_api_url
-        query = {"format": "json", "formatversion": "2", "errorformat": "plaintext", **params}
+        query = {
+            "format": "json",
+            "formatversion": "2",
+            "errorformat": "plaintext",
+            # Refuse the request instead of queueing it when replication lag is high,
+            # so a busy Wikipedia produces a clean error rather than a slow success.
+            "maxlag": _MAX_LAG_SECONDS,
+            **params,
+        }
 
         last_error: Exception | None = None
         for attempt in range(2):
+            retry_after: float | None = None
             try:
                 async with self._semaphore:
                     response = await self._client.get(url, params=query)
                 if response.status_code == 404:
                     raise WikipediaError(f"{url} returned 404")
                 if response.status_code == 429 or response.status_code >= 500:
+                    # Wikimedia asks clients to honour Retry-After on a 429. Sleeping a
+                    # fixed second re-enters the same limiter and is nearly guaranteed to
+                    # be refused again, which is how a rate limit turns into an outage.
+                    retry_after = _retry_delay(response, default=_RETRY_BACKOFF_SECONDS)
                     raise WikipediaError(
                         f"{url} returned {response.status_code} (upstream busy)"
                     )
@@ -141,7 +205,11 @@ class MediaWikiClient:
                     raise WikipediaError(f"MediaWiki API error: {payload['error']}")
                 return payload
             if attempt == 0:
-                await asyncio.sleep(1.0)
+                # A little jitter, so several clients that were refused together do not
+                # all come back at the same instant and get refused again.
+                await asyncio.sleep(
+                    retry_after if retry_after is not None else _RETRY_BACKOFF_SECONDS
+                )
 
         logger.warning("MediaWiki request failed after retries: %s", last_error)
         raise WikipediaError(str(last_error) or "Unknown MediaWiki failure")
@@ -411,37 +479,68 @@ class MediaWikiClient:
 
     async def get_links_for_page_ids(
         self, page_ids: Iterable[int], *, max_links_per_page: int = 500
-    ) -> dict[int, set[str]]:
+    ) -> dict[int, PageLinks]:
         """Outgoing main-namespace link titles for many pages, keyed by page id.
 
         Titles are returned as comparison keys (see :func:`title_key`).
+
+        Paginates, and reports per page whether it saw every link. ``pllimit=max`` is not
+        "everything" - it is capped at 500 for a client without ``apihighlimits``, and the
+        response carries a ``continue`` token when more remain. Stopping at the cap and
+        reporting the result as if it were the whole set is what made a one-way check
+        report a false accusation, so the cap ends the loop *and* marks the page
+        incomplete.
         """
 
         ids = [int(page_id) for page_id in page_ids if page_id]
         if not ids:
             return {}
 
-        result: dict[int, set[str]] = {}
+        result: dict[int, PageLinks] = {}
         for batch in chunked(ids, _MAX_TITLES_PER_REQUEST):
-            data = await self._api_get(
-                {
-                    "action": "query",
-                    "prop": "links",
-                    "plnamespace": MAIN_NAMESPACE,
-                    "pllimit": _LINKS_PROP_LIMIT,
-                    "pageids": "|".join(str(page_id) for page_id in batch),
-                    "redirects": _MAX_REDIRECTS,
-                }
-            )
-            for page in (data.get("query") or {}).get("pages") or []:
-                page_id = page.get("pageid")
-                if not page_id:
-                    continue
-                result[int(page_id)] = {
-                    title_key(link["title"])
-                    for link in page.get("links") or []
-                    if link.get("title")
-                }
+            params: dict[str, Any] = {
+                "action": "query",
+                "prop": "links",
+                "plnamespace": MAIN_NAMESPACE,
+                "pllimit": _LINKS_PROP_LIMIT,
+                "pageids": "|".join(str(page_id) for page_id in batch),
+                "redirects": _MAX_REDIRECTS,
+            }
+
+            # Paged one query at a time, because a continuation token belongs to the
+            # query that produced it and cannot be carried into the next batch.
+            while True:
+                data = await self._api_get(params)
+                before = sum(len(entry.titles) for entry in result.values())
+
+                for page in (data.get("query") or {}).get("pages") or []:
+                    page_id = page.get("pageid")
+                    if not page_id:
+                        continue
+                    entry = result.setdefault(
+                        int(page_id), PageLinks(titles=set(), complete=True)
+                    )
+                    for link in page.get("links") or []:
+                        title = link.get("title")
+                        if not title:
+                            continue
+                        if len(entry.titles) >= max_links_per_page:
+                            # A link we had to drop is a link we cannot see the
+                            # destination of, so the answer stops being complete here.
+                            entry.complete = False
+                            continue
+                        entry.titles.add(title_key(title))
+
+                if not data.get("continue"):
+                    break
+                if sum(len(entry.titles) for entry in result.values()) == before:
+                    # A continuation that brings back nothing new would spin forever,
+                    # holding a request and a slot in the concurrency semaphore.
+                    raise WikipediaError(
+                        "MediaWiki returned a continuation token that returned no new links"
+                    )
+                params = {**params, **data["continue"]}
+
         return result
 
     # ------------------------------------------------------------------

@@ -15,8 +15,22 @@ cached. These tests pin the shape of the rows so that failure cannot return unno
 
 from __future__ import annotations
 
-from app.repository import _link_rows
-from app.schemas import ExtractedLink
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from app.config import Settings
+from app.models import Article
+from app.repository import (
+    _payload_json,
+    _should_prune,
+    _link_rows,
+    cached_analysis,
+    is_fresh,
+    prune_statement,
+    retention_cutoff,
+)
+from app.schemas import AnalysisResult, ExtractedLink
 
 
 def _link(
@@ -150,3 +164,162 @@ def test_two_sources_may_link_the_same_target() -> None:
 
     assert len(_link_rows(1, [_link("London", page_id=3, exists=True)])) == 1
     assert len(_link_rows(2, [_link("London", page_id=3, exists=True)])) == 1
+
+
+# --- retention ---------------------------------------------------------------
+# `analysis_runs` is the one table here that no natural bound applies to. `articles` and
+# `article_links` are capped by the size of Wikipedia; this grows with request volume, and
+# `POST /api/analyze` inserts a row on every call with nothing deleting them. Left alone it
+# is a slow, boring disk-exhaustion failure.
+#
+# There is no database in this suite - every fixture runs with an empty DATABASE_URL - so
+# what is asserted here is the cutoff arithmetic, the amortisation decision, and the SQL
+# that gets sent. The execution itself is not covered, and that is a known gap rather than
+# an oversight: see docs/PUBLIC-READINESS.md B6.
+
+NOW = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
+
+
+def test_the_cutoff_is_the_configured_window_ago() -> None:
+    assert retention_cutoff(NOW, days=30) == NOW - timedelta(days=30)
+    assert retention_cutoff(NOW, days=1) == NOW - timedelta(days=1)
+
+
+def test_retention_of_zero_days_is_rejected_rather_than_pruning_everything() -> None:
+    # A misconfigured 0 must not become "delete all history on the next write".
+    with pytest.raises(ValueError):
+        retention_cutoff(NOW, days=0)
+    with pytest.raises(ValueError):
+        retention_cutoff(NOW, days=-1)
+
+
+def test_the_prune_only_deletes_runs_older_than_the_cutoff() -> None:
+    cutoff = NOW - timedelta(days=30)
+    sql = str(
+        prune_statement(cutoff).compile(
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+
+    assert "DELETE FROM analysis_runs" in sql
+    # Strictly older than, not at-or-before: a run exactly on the boundary is kept.
+    assert "created_at <" in sql
+    assert "2026-08-28" in sql
+    # It must not touch the two tables that are the actual cache.
+    assert "article_links" not in sql
+    assert "DELETE FROM articles" not in sql
+
+
+def test_the_prune_is_amortised_rather_than_running_on_every_write() -> None:
+    settings = Settings()
+    every = settings.analysis_run_prune_every
+
+    assert every > 0
+    # Below the threshold nothing happens, so a busy table does not pay for a count and a
+    # delete on every single request.
+    assert not _should_prune(0, every=every)
+    assert not _should_prune(every - 1, every=every)
+    assert _should_prune(every, every=every)
+    assert _should_prune(every * 10, every=every)
+
+
+def test_the_prune_can_be_switched_off_without_breaking_writes() -> None:
+    assert not _should_prune(10_000, every=0)
+    assert not _should_prune(10_000, every=-1)
+
+
+# --- the read path ------------------------------------------------------------
+# `articles.analysis_payload` holds a whole computed answer so a repeat request does not
+# spend 25-35 Wikimedia calls to reproduce it. The query cannot be exercised here - there
+# is no database in this suite - but the two things that decide whether the cache is
+# *correct* rather than merely present can be: the freshness policy, and whether the
+# serialised payload comes back as the identical object.
+
+
+def test_a_recent_analysis_is_fresh() -> None:
+    now = NOW
+    assert is_fresh(now - timedelta(seconds=10), now=now, ttl_seconds=3600)
+    assert is_fresh(now, now=now, ttl_seconds=3600)
+
+
+def test_an_old_analysis_is_not_fresh() -> None:
+    now = NOW
+    assert not is_fresh(now - timedelta(seconds=3601), now=now, ttl_seconds=3600)
+    # Exactly on the boundary counts as stale, so a ttl is an upper bound and not a hint.
+    assert not is_fresh(now - timedelta(seconds=3600), now=now, ttl_seconds=3600)
+
+
+def test_a_missing_timestamp_is_stale_rather_than_fresh() -> None:
+    # Assuming fresh on a value nobody can date is how a cache ends up serving something
+    # of unknown age with no way to tell.
+    assert not is_fresh(None, now=NOW, ttl_seconds=3600)
+
+
+def test_a_naive_timestamp_is_read_as_utc_rather_than_crashing() -> None:
+    # Postgres can hand back a naive datetime for a timestamptz, and comparing that to an
+    # aware one raises instead of answering.
+    naive = (NOW - timedelta(minutes=5)).replace(tzinfo=None)
+    assert is_fresh(naive, now=NOW, ttl_seconds=3600)
+
+
+def test_a_ttl_of_zero_disables_the_read_path() -> None:
+    assert not is_fresh(NOW, now=NOW, ttl_seconds=0)
+    # And the lookup short-circuits before it would open a session at all.
+    assert cached_analysis("Ada Lovelace", ttl_seconds=0) is None
+
+
+def test_the_cache_misses_when_no_database_is_configured() -> None:
+    # The suite runs with an empty DATABASE_URL, so this is the real "no cache" path and
+    # it has to return None rather than raise. A cache that raises is a cache that breaks
+    # requests.
+    assert cached_analysis("Ada Lovelace", ttl_seconds=3600) is None
+    assert cached_analysis("", ttl_seconds=3600) is None
+    assert cached_analysis("   ", ttl_seconds=3600) is None
+
+
+async def test_a_serialised_analysis_comes_back_as_the_identical_object() -> None:
+    from app.services.analysis import analyze_article
+    from tests.fake_wikipedia import ADA, FakeWikipediaClient
+
+    original = await analyze_article(FakeWikipediaClient(), Settings(database_url=""), ADA)
+
+    restored = AnalysisResult.model_validate_json(_payload_json(original))
+
+    assert restored == original
+    # Compared field by field as well, so a future field that silently fails to survive
+    # the round trip is named rather than hidden inside an equality check.
+    assert restored.article == original.article
+    assert restored.summary == original.summary
+    assert restored.links == original.links
+    assert restored.missing_connections == original.missing_connections
+    assert restored.one_way_connections == original.one_way_connections
+    assert restored.generated_at == original.generated_at
+
+
+async def test_the_cached_payload_preserves_the_fields_a_rebuilt_one_would_lose() -> None:
+    """Why the payload is cached whole rather than re-derived from `article_links`.
+
+    `article_links` stores the *resolved* target title. The requested one is what
+    distinguishes a direct link from a redirect, and `redirected` only exists on the
+    response. Re-deriving would change the answer, so the whole answer is stored instead.
+    """
+
+    from app.services.analysis import analyze_article
+    from tests.fake_wikipedia import ADA, FakeWikipediaClient
+
+    original = await analyze_article(FakeWikipediaClient(), Settings(database_url=""), ADA)
+    restored = AnalysisResult.model_validate_json(_payload_json(original))
+
+    assert restored.links == original.links
+    assert [link.state for link in restored.links] == [link.state for link in original.links]
+    assert [link.source_title for link in restored.links] == [
+        link.source_title for link in original.links
+    ]
+    assert restored.summary.one_way_incomplete == original.summary.one_way_incomplete
+
+
+def test_the_payload_column_is_nullable_so_a_cache_miss_is_representable() -> None:
+    # A NOT NULL payload column would make the first write of an article fail, because
+    # `_upsert_article` runs before the payload exists on the very first pass.
+    assert Article.__table__.c.analysis_payload.nullable is True
+

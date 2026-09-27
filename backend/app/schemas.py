@@ -130,6 +130,10 @@ class AnalysisSummary(BaseModel):
     total_one_way: int = 0
     one_way_targets_checked: int = 0
     one_way_truncated: bool = False
+    # Targets whose outgoing links could not be read in full, so whether they link back
+    # is unknown. Distinct from `one_way_truncated`, which counts targets never looked at
+    # because of the budget: here a target *was* looked at and the answer came back short.
+    one_way_incomplete: int = 0
     # True when the article has more links than `max_links_per_article` and only
     # the first ones were checked, so `total_links` is a checked subset rather
     # than the article's real link count.
