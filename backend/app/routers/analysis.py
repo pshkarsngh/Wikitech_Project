@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from app import repository
-from app.dependencies import ClientDep, SettingsDep, TitleQuery
+from app.dependencies import AnalysisKeyDep, ClientDep, SettingsDep, TitleQuery
 from app.schemas import AnalysisResult, ConnectionMap, MissingConnection, OneWayConnection
 from app.services.analysis import (
     analyze_article,
@@ -41,6 +41,7 @@ def _upstream_error(exc: WikipediaError) -> HTTPException:
 
 @router.post("/analyze", response_model=AnalysisResult)
 async def analyze(
+    _key: AnalysisKeyDep,
     client: ClientDep,
     settings: SettingsDep,
     response: Response,
@@ -53,6 +54,9 @@ async def analyze(
     (docs/ARCHITECTURE.md section 12), so recomputing an answer that was computed an hour
     ago spends someone else's quota to return the same bytes. ``X-Cache`` says which path
     answered, because a silently cached result is indistinguishable from a fresh one.
+
+    Gated by the shared key, because it is the route that costs the most: it crawls, it
+    classifies, and it writes.
     """
 
     cached = repository.cached_analysis(
@@ -74,7 +78,7 @@ async def analyze(
 
 @router.get("/connections/missing", response_model=list[MissingConnection])
 async def missing_connections(
-    client: ClientDep, settings: SettingsDep, title: TitleQuery
+    _key: AnalysisKeyDep, client: ClientDep, settings: SettingsDep, title: TitleQuery
 ) -> list[MissingConnection]:
     """Missing connection detection.
 
@@ -93,7 +97,7 @@ async def missing_connections(
 
 @router.get("/connections/one-way", response_model=list[OneWayConnection])
 async def one_way_connections(
-    client: ClientDep, settings: SettingsDep, title: TitleQuery
+    _key: AnalysisKeyDep, client: ClientDep, settings: SettingsDep, title: TitleQuery
 ) -> list[OneWayConnection]:
     """One-way connection detection.
 
@@ -111,9 +115,13 @@ async def one_way_connections(
 
 @router.get("/connections/map", response_model=ConnectionMap)
 async def connection_map(
-    client: ClientDep, settings: SettingsDep, title: TitleQuery
+    _key: AnalysisKeyDep, client: ClientDep, settings: SettingsDep, title: TitleQuery
 ) -> ConnectionMap:
-    """Connection map generation: nodes and edges ready for Cytoscape.js."""
+    """Connection map generation: nodes and edges ready for Cytoscape.js.
+
+    Gated, because it crawls the same graph as `/analyze` and then classifies it, which is
+    the single most expensive request this app makes.
+    """
 
     try:
         graph = await build_link_graph(client, settings, title)

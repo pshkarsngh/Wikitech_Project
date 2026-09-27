@@ -1,3 +1,4 @@
+import ApiKeyPrompt from './ApiKeyPrompt'
 import ArticleSummary from './ArticleSummary'
 import SearchBar from './SearchBar'
 import { ErrorMessage, EmptyState, Loading, StatCard } from './ui'
@@ -24,11 +25,13 @@ export default function ResultLayout({ children, showSummary = true, loadingLabe
 
       {status === 'loading' && <Loading label={loadingLabel} />}
 
+      {status === 'unauthorized' && <ApiKeyPrompt />}
+
       {status === 'error' && (
         <ErrorMessage error={error} onRetry={title ? () => run(title) : undefined} />
       )}
 
-      {isIdle && status !== 'loading' && status !== 'error' && (
+      {isIdle && status !== 'loading' && status !== 'error' && status !== 'unauthorized' && (
         <EmptyState
           title="No article selected"
           description="Search for an article above, or start from the home page, to see its connections."

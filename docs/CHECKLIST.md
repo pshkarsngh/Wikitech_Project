@@ -197,6 +197,13 @@ Zero `fastapi` imports are permitted in this directory.
 
 # 5. Backend — Tests
 
+> **Most of this section predates `704e763` and is wrong about the counts, the untracked
+> files and the missing `npm run test`.** It is left as written rather than half-updated;
+> finding D5 in `PUBLIC-READINESS.md` is the pass that fixes it. What is current:
+> `pytest` → **172 passed** with `TEST_DATABASE_URL` set, **159 passed + 1 module skipped**
+> without it; `npm run test` → **30 passed** across 5 files. Every test module in `backend/`
+> is tracked; `test_frontend_contract.py` is not untracked any more.
+
 68 tests total: 25 + 19 + 24. Re-verified 2026-09-27 at `6336d1f` (was 59: 16 + 19 + 24).
 
 **The suite runs green.** Verified 2026-09-27 at `6336d1f` plus the uncommitted
@@ -219,6 +226,7 @@ The count moved from 68 to 77 because `tests/test_frontend_contract.py` contribu
 | [ ] | `backend/tests/test_mediawiki.py` | 24 tests. Title normalisation, `chunked`, `is_internal_article_link`, `wiki_host`, resolve/redirect/invalid handling, `find_article` fallbacks, namespace filtering, dedup. | Uses `StubClient` / `SequencedStubClient`, which skip `super().__init__()` and replace `_api_get`. The three `# noqa: D107` markers (lines 54, 67, 269) are load-bearing comments. |
 | [ ] | `backend/tests/smoke_live.py` | Live script against the real MediaWiki/Wikidata APIs. | **Not collected by pytest** (filename does not match `test_*.py`) and not a substitute for it. The only file permitted to touch the network, and only when run deliberately. |
 | [ ] | `backend/tests/test_frontend_contract.py` | 9 tests. Reads frontend source as text and asserts token and stylesheet contracts: every referenced `var(--x)` is declared, status/entity hues stay distinct, `--positive` has not returned, the map styles `node[!exists]`, entity nodes differ by shape, `entityType` is forwarded, the legend names every node type — and `test_cytoscape_styles_never_use_css_custom_properties`, the UAT-01 guard. | **Untracked.** Resolves `FRONTEND_SRC` as `parents[2] / "frontend" / "src"`, so it breaks if the directory layout changes. Its assertions are about *source text*, not rendered output, and it must not be described as a browser test. It caught the broken `var()` form in the map but only because UAT-01 was being investigated — it did not catch the bug when it was introduced. |
+| [ ] | `backend/tests/test_persistence.py` | 13 tests. The only module that opens a PostgreSQL connection: the write path, the read path, the redirect duplicate, `uq_link` itself, the retention prune, a swallowed constraint violation, the schema the models declare, and re-applying `init.sql` to a database the app already created. | **Skipped unless `TEST_DATABASE_URL` is set** and names a database containing `test`; every test truncates. It found DEF-006 on its first run. A second CI step fails the job if it skips. See `AGENTS.md` §8. |
 
 ---
 

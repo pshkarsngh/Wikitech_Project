@@ -73,6 +73,13 @@ services:
       # The SPA is served same-origin through nginx, so nothing cross-origin is
       # expected. Set this only if something else calls the API directly.
       CORS_ORIGINS: ${CORS_ORIGINS:-[]}
+      # The shared key for the crawl routes. Defaulted to empty rather than required,
+      # because empty is a legitimate "this deployment is open" decision and the app
+      # treats it as one. Set it in .env and the crawl routes start refusing anonymous
+      # traffic; leave it and the deployment behaves exactly as it did before.
+      # `GET /api/health` reports the result as `auth_required`, so an operator can
+      # confirm which mode a running deployment is actually in.
+      ANALYSIS_API_KEY: ${ANALYSIS_API_KEY:-}
     expose:
       - "8000"
     logging:

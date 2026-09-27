@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     # Set to 0 to disable the read path entirely and always recompute.
     analysis_cache_ttl_seconds: int = 3600
 
+    # Shared key required by the routes that crawl Wikipedia. Empty means no key, which is
+    # the default and not a misconfiguration: the app boots and answers, exactly as it
+    # does with an empty `database_url`. A deployment that wants to stop anonymous traffic
+    # from spending its Wikimedia budget sets this to any non-empty string, and the
+    # expensive routes then refuse everything without a matching `X-Api-Key` header.
+    #
+    # This is deliberately a single shared secret and not a user account. There is one
+    # subject, so there is nothing to attribute, and a per-user model would need a users
+    # table, a login surface and a schema change to answer a question this deployment
+    # does not yet have. It is a speed bump against drive-by traffic: rotating the string
+    # cuts off whoever was using the leaked one. See docs/ARCHITECTURE.md section 10.1.
+    analysis_api_key: str = ""
+
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -81,6 +94,13 @@ class Settings(BaseSettings):
     @property
     def database_enabled(self) -> bool:
         return bool(self.database_url.strip())
+
+    @property
+    def analysis_key_enabled(self) -> bool:
+        # `.strip()` for the same reason as `database_enabled`: a key of spaces is not a
+        # key, and treating it as one would gate the API behind something no caller can
+        # type.
+        return bool(self.analysis_api_key.strip())
 
 
 @lru_cache

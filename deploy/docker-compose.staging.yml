@@ -68,6 +68,10 @@ services:
       # expected. This is here for direct port access while debugging UAT.
       CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
       USER_AGENT: ${USER_AGENT:-FindTheMissingConnections/0.1 (https://github.com/pshkarsngh/Wikitech_Project)}
+      # Set this to exercise the invite-only path in the stack UAT runs against:
+      # ANALYSIS_API_KEY=some-ascii-string. Empty keeps staging open, which is the
+      # default. `GET /api/health` reports the mode as `auth_required`.
+      ANALYSIS_API_KEY: ${ANALYSIS_API_KEY:-}
     expose:
       - "8000"
     # Published on loopback only, so a UAT run can hit the API without going

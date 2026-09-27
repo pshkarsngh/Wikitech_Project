@@ -880,13 +880,17 @@ These items are not specified by the source and must be resolved before final ap
 
 **OQ-04:** What accessibility standard should the application target?
 
-**OQ-05:** What authentication requirement, if any, is required for the first release?
+**OQ-05:** ~~What authentication requirement, if any, is required for the first release?~~
+**Answered 27 September 2026: an optional single shared key, `ANALYSIS_API_KEY`, gating
+only the routes that crawl Wikipedia.** Empty is open and is the default; set, the crawl
+routes demand a matching `X-Api-Key` header. No user accounts, no sessions, no identity —
+the reasoning, and what the decision explicitly is not, are in `ARCHITECTURE.md` §10.1.
 
 **OQ-06:** What maximum number of connections should be displayed in the first map view?
 
 **OQ-07:** What exact behavior should occur when an entity has redirects or alternate article titles?
 
-These questions are intentionally left open because the source does not define their answers.
+These questions are intentionally left open because the source does not define their answers. OQ-05 is the exception: it was answered by the project, not by the source, and the answer is recorded in `ARCHITECTURE.md` §10.1.
 
 ---
 

@@ -14,6 +14,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app import db
 from app.config import get_settings
+from app.dependencies import SettingsDep
 from app.routers import analysis, articles
 from app.schemas import HealthResponse
 from app.services.mediawiki import ArticleNotFoundError, MediaWikiClient, WikipediaError
@@ -104,15 +105,21 @@ def create_app() -> FastAPI:
     app.include_router(analysis.router, prefix=settings.api_prefix)
 
     @app.get(f"{settings.api_prefix}/health", response_model=HealthResponse, tags=["meta"])
-    async def health() -> HealthResponse:
+    async def health(active: SettingsDep) -> HealthResponse:
+        # `active` rather than the `settings` this function closes over. The lifespan
+        # lets an injected `app.state.settings` win, so every route and the analysis-key
+        # gate read that one while a closure read here would report the process
+        # environment instead - meaning an embedder or a test could be looking at a
+        # different deployment's configuration than the one serving its requests.
         return HealthResponse(
             status="ok",
-            version=settings.version,
+            version=active.version,
             database_enabled=db.get_engine() is not None,
             # Never let the probe decide the answer. Persistence is best effort, so a
             # database that is down degrades the cache, not the request - and this
             # endpoint still has to report that in a body rather than by failing.
             database_reachable=db.ping(),
+            auth_required=active.analysis_key_enabled,
         )
 
     @app.get("/", include_in_schema=False)

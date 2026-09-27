@@ -1,5 +1,7 @@
 // Relative by default: the Vite dev server proxies /api to the FastAPI backend
 // (see vite.config.js). Set VITE_API_BASE_URL to call a backend directly.
+import { readAnalysisKey } from './apiKey'
+
 const DEFAULT_BASE_URL = '/api'
 
 export const API_BASE_URL = (
@@ -20,11 +22,20 @@ async function request(path, options = {}) {
   // `method` and `body`: analyzeArticle asked for POST and the browser sent GET, and
   // the backend answered 405 for every analysis. Forward the whole init instead.
   const { signal, ...init } = options
+  // Sent on every call rather than the four gated ones. The backend ignores it on the
+  // read routes, and a single place that can attach it cannot drift out of sync with the
+  // list of routes that need it. The caller may already have set the header, hence the
+  // spread order.
+  const analysisKey = readAnalysisKey()
   let response
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
-      headers: { Accept: 'application/json', ...init.headers },
+      headers: {
+        Accept: 'application/json',
+        ...(analysisKey ? { 'X-Api-Key': analysisKey } : {}),
+        ...init.headers,
+      },
       signal,
     })
   } catch (cause) {

@@ -22,7 +22,7 @@ const EMPTY_SUMMARY = {
 
 const initialState = {
   title: '',
-  status: 'idle', // idle | loading | ready | error
+  status: 'idle', // idle | loading | ready | error | unauthorized
   error: null,
   article: null,
   summary: EMPTY_SUMMARY,
@@ -75,11 +75,15 @@ export function AnalysisProvider({ children }) {
       return result.article.title
     } catch (error) {
       if (!isCurrent()) return null
+      // 401 is its own state, not an error message. A wrong or absent key is not a
+      // failure the visitor can retry their way out of, and the fix is a field to fill
+      // in rather than a button - so it gets a prompt instead of the error panel.
+      const unauthorized = error?.status === 401
       setState({
         ...initialState,
         title: trimmed,
-        status: 'error',
-        error: error.message,
+        status: unauthorized ? 'unauthorized' : 'error',
+        error: unauthorized ? null : error.message,
       })
       return null
     }
@@ -87,7 +91,10 @@ export function AnalysisProvider({ children }) {
 
   const reset = useCallback(() => setState(initialState), [])
 
-  const value = useMemo(() => ({ ...state, run, reset }), [state, run, reset])
+  const value = useMemo(
+    () => ({ ...state, run, reset }),
+    [state, run, reset],
+  )
 
   return <AnalysisContext value={value}>{children}</AnalysisContext>
 }

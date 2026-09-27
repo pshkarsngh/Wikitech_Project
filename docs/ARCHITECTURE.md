@@ -473,9 +473,44 @@ Frontend displays failure state
 
 ## 10.1 Authentication
 
-Authentication is **not part of the defined core workflow**.
+**Decided 27 September 2026, answering `PRD.md` OQ-05 and finding A3 of the public
+readiness audit. This section previously deferred the question; it is now a decision.**
 
-If authentication becomes a required project requirement, this architecture must be updated before implementation.
+A **single shared key**, optional, gating only the routes that crawl Wikipedia.
+
+- `ANALYSIS_API_KEY` empty (the default) means the deployment is open. That is a normal
+  state, not a misconfiguration, exactly like an empty `DATABASE_URL`, and the app boots
+  and answers. `GET /api/health` reports `auth_required` so an operator can tell which
+  mode a deployment is in without reading its environment.
+- When it is set, `POST /api/analyze` and all three `GET /api/connections/*` routes refuse
+  anything without a matching `X-Api-Key` header, with 401. The comparison is
+  `secrets.compare_digest`, so response time does not leak how much of the key was right.
+- The key travels in a **header, never a query parameter**, so it does not land in nginx
+  access logs, browser history, or a `Referer`.
+- The read routes (`/api/article`, `/api/article/links`, `/api/articles/*`) stay open.
+  Locking a reader out of the search box would be a worse outcome than the one this
+  prevents; those routes are behind the 60r/m read limit and the worst case is a lookup.
+
+**Why a shared key and not user accounts.** The thing being protected is a shared budget:
+an analysis costs 25-35 calls to Wikimedia, and that budget belongs to the deployment and
+to Wikimedia, not to the visitor. What was missing was a subject that can be rotated and
+refused. A single secret supplies that for about thirty lines; accounts, sessions and
+per-user ownership would add a users table, a login surface, a schema change and a session
+story, in order to answer a question this project has not been asked. There is
+consequently one subject and nothing to attribute, which is why `analysis_runs` gained no
+`api_key_id` column: with one key it would be a constant.
+
+**What this is not.** It is not identity. Anyone holding the key shares it, the key is a
+shared secret between the operator and whoever they gave it to, and rotating the string is
+the only way to cut off a leaked one. It is a speed bump against anonymous drive-by
+traffic, not an access-control system. A deployment that needs to know *who* did what needs
+real authentication, and this decision does not pretend otherwise.
+
+**The visitor's side.** The key is typed into a prompt and kept in `sessionStorage`, so it
+lives for the tab and not on disk. It is deliberately **not** a build-time constant baked
+into the bundle: a key in the JavaScript is a key every visitor already has, which would
+gate nothing. A 401 renders the prompt in place of the error panel, and submitting it
+retries the analysis that was refused.
 
 ## 10.2 Input Validation
 

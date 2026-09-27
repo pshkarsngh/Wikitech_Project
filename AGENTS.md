@@ -17,21 +17,23 @@ backend/
     models.py          SQLAlchemy tables: articles, article_links, analysis_runs
     repository.py      the only module that writes rows
     schemas.py         Pydantic request/response models
-    dependencies.py    Annotated aliases: ClientDep, SettingsDep, TitleQuery, SearchQuery
+    dependencies.py    Annotated aliases: ClientDep, SettingsDep, TitleQuery, SearchQuery,
+                      require_analysis_key  (the X-Api-Key gate)
     routers/           articles.py, analysis.py  (HTTP only)
     services/          analysis.py, classifier.py, mediawiki.py  (no FastAPI)
   tests/               conftest.py, fake_wikipedia.py, smoke_live.py,
-                      test_frontend_contract.py, test_*.py
+                      test_frontend_contract.py, test_persistence.py, test_*.py
   requirements.txt  pytest.ini  .env.example
 frontend/
   Dockerfile           release image: vite build, served by nginx
   nginx.conf.template installed as /etc/nginx/templates/default.conf.template
   src/
     pages/             HomePage, SearchPage, Analysis, Entities, Missing/OneWay/Map, NotFound
-    components/        Layout, SearchBar, ResultLayout, Article*, Connection*, Entity*, ui.jsx
+    components/        Layout, SearchBar, ResultLayout, Article*, Connection*, Entity*,
+                      ApiKeyPrompt, ui.jsx
     context/           AnalysisContext.jsx
     hooks/             useArticleParam.js
-    api/               client.js
+    api/               client.js, apiKey.js  (sessionStorage-backed key store)
   index.html  vite.config.js  vitest.config.js  package.json  .oxlintrc.json  .env.example
 database/              docker-compose.yml, init.sql, README.md
 deploy/
@@ -57,6 +59,7 @@ Every command is CWD-sensitive. `backend/.env` uses a relative `env_file`, and
 | `backend` | `uvicorn app.main:app --reload` (serves on :8000) |
 | `backend` | `pytest` |
 | `backend` | `pytest tests/test_mediawiki.py -v` |
+| `backend` | `$env:TEST_DATABASE_URL='postgresql+psycopg://postgres@127.0.0.1:5432/find_missing_test?connect_timeout=5'; pytest tests/test_persistence.py` (the persistence suite; skipped without it) |
 | `backend` | `python -m tests.smoke_live` (hits the real API; not part of pytest) |
 | `database` | `docker compose up -d` |
 | `frontend` | `npm ci` |
@@ -117,6 +120,22 @@ These are load-bearing. Breaking one breaks the tests or the deployment.
   the app boots and `/api/health` reports `database_enabled: false`. There is no
   history endpoint — `GET /api/analyses/recent` and `repository.recent_analyses` were
   removed in `c7d5344`.
+* The shared analysis key is optional in exactly the same way. An empty
+  `ANALYSIS_API_KEY` is the default and means the deployment is open; set, the four crawl
+  routes (`POST /api/analyze`, all three `GET /api/connections/*`) refuse anything without a
+  matching `X-Api-Key` header, and `/api/health` reports `auth_required`. The read routes
+  stay open on purpose. It is a shared secret, not identity — one key, one subject, and
+  `analysis_runs` deliberately has no `api_key_id`. `docs/ARCHITECTURE.md` §10.1 is the
+  decision; the `Header()` default note in `dependencies.py` is load-bearing, as is the
+  frontend rule that the key is **typed**, never a build-time constant.
+* A gate must run **before** the work it protects. `require_analysis_key` is a FastAPI
+  dependency, not a line inside the handler, so a refused request costs zero calls to
+  Wikimedia — asserted directly in `test_api_key.py`. A check placed after the crawl would
+  have protected the database and not Wikimedia.
+* `/api/health` must read settings through `SettingsDep`, never through the `settings`
+  local that `create_app` closes over. The lifespan lets an injected `app.state.settings`
+  win, so a closure read reports the process environment while every route reads the
+  injected one — two different deployments' configuration for the same request.
 * In a deployment the SPA and the API share an origin. `frontend/nginx.conf.template`
   serves the built assets and reverse-proxies `/api` to the backend, so the client's
   relative `/api` never becomes a cross-origin request and CORS stays out of the
@@ -173,6 +192,27 @@ Backend (pytest):
   renaming a schema field breaks them.
 * Test names are behavioural sentences:
   `test_one_way_target_without_reverse_link_is_reported_as_one_way`.
+* `tests/test_api_key.py` covers the gate, and its `GATED`/`UNGATED` lists are the
+  contract: adding a crawl route to a router without gating it fails `UNGATED`, and gating
+  a read route fails `GATED`. Keep both lists in step with `routers/analysis.py`.
+* The key is compared with `secrets.compare_digest` and **`.encode()`d**, because
+  `compare_digest` rejects non-ASCII `str`. A `Header()` inside an `Annotated` with no
+  default is *required* in Pydantic v2, so every gated route would 422 instead of 401 —
+  hence the `= None` in the signature, which also has to come last.
+* `tests/test_persistence.py` is the one module that opens a database, and it is skipped
+  unless `TEST_DATABASE_URL` is set. It exists because **every other test in this
+  repository runs with an empty `DATABASE_URL`** — which is how UAT-02, DEF-003 and
+  DEF-006 each reached a release with a green suite. Any new claim about a SQL statement,
+  a constraint, the retention prune or the cache read path belongs there, not in a unit
+  test. Two rules that module depends on:
+  * It must stay skippable. `pytest` with no `TEST_DATABASE_URL` is a normal run, and the
+    suite must not fail on the absence of a server.
+  * A skip must never be mistaken for a pass. The CI `backend` job has a separate step
+    that fails the job if this module skips.
+* Read the database through a `Session`, never through `db.session_scope`. `session_scope`
+  logs and swallows, so a failed query returns an empty result and the test reports a
+  missing row instead of the error. A bare `Connection` is not a substitute either —
+  executing an ORM `select()` on one returns column values, not objects.
 
 Frontend (vitest, `npm run test`):
 

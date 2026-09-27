@@ -32,6 +32,7 @@ def test_health(client: TestClient) -> None:
         "version": "0.1.0",
         "database_enabled": False,
         "database_reachable": False,
+        "auth_required": False,
     }
 
 

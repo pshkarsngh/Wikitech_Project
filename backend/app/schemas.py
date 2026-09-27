@@ -195,3 +195,8 @@ class HealthResponse(BaseModel):
     # an Engine object and this would report enabled. A deployment whose every write
     # fails looks healthy otherwise, because persistence degrades to a silent no-op.
     database_reachable: bool
+    # "The crawl routes demand a shared key", which is a fact about this process. Reported
+    # rather than assumed: a deployment that meant to be invite-only and is not is the
+    # failure nobody notices until Wikimedia blocks it, and this is the one endpoint a
+    # human reads before deciding the deployment is ready.
+    auth_required: bool
