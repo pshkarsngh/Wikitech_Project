@@ -17,7 +17,7 @@ from app.config import Settings
 from app.db import session_scope
 from app.models import AnalysisRun, Article, ArticleLink
 from app.schemas import AnalysisResult, ArticleDetail, ExtractedLink
-from app.services.mediawiki import normalize_title
+from app.services.mediawiki import normalize_title, title_key
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ def cached_analysis(
     in this module for the same reason.
     """
 
-    key = normalize_title(title).lower()
+    key = title_key(title)
     if not key or ttl_seconds <= 0:
         return None
 
@@ -200,7 +200,12 @@ def _upsert_article(
     values = {
         "page_id": article.page_id,
         "title": article.title,
-        "normalized_title": normalize_title(article.title),
+        # The lookup key, not the display title. `cached_analysis` searches this column
+        # with `title_key`, and PostgreSQL compares VARCHAR case-sensitively, so storing
+        # the display spelling here means the read path never matches its own write.
+        # `database/init.sql` says the same thing: its example query compares this column
+        # to `lower('ada lovelace')`.
+        "normalized_title": title_key(article.title),
         "description": article.description,
         "extract": article.extract,
         "url": article.url,

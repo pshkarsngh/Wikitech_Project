@@ -20,9 +20,32 @@ jobs:
   backend:
     name: Backend tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          # Trust, because the service is only reachable from this runner and the tests
+          # need no credential. A real deployment sets POSTGRES_PASSWORD and the compose
+          # file refuses to start without it.
+          POSTGRES_HOST_AUTH_METHOD: trust
+          # Without this the service creates only the default `postgres` database, and
+          # TEST_DATABASE_URL below would name a database that does not exist.
+          POSTGRES_DB: find_missing_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
+    env:
+      # Without this the whole persistence suite skips, and a skipped suite reads exactly
+      # like a passing one. UAT-02 shipped because no test ever opened a connection.
+      TEST_DATABASE_URL: >-
+        postgresql+psycopg://postgres@127.0.0.1:5432/find_missing_test?connect_timeout=5
     steps:
       - uses: actions/checkout@v4
 
@@ -35,12 +58,23 @@ jobs:
       - name: Install requirements
         # pytest-asyncio and httpx2 are not optional: without them the suite
         # does not merely fail, it aborts with an INTERNALERROR and runs zero
-        # tests, which reads as a pass.
+        # tests, which reads like a pass.
         run: pip install -r requirements.txt
 
       - name: Run tests
         working-directory: backend
         run: pytest -q
+
+      - name: The database suite did not skip
+        # A service that fails to come up turns the 13 persistence tests into 13 skips,
+        # which is the exact failure mode this job now exists to prevent.
+        run: |
+          output=$(pytest -q -rs tests/test_persistence.py 2>&1)
+          echo "$output"
+          if echo "$output" | grep -qi skipped; then
+            echo "::error::the persistence suite skipped - postgres is not reachable"
+            exit 1
+          fi
 
   frontend:
     name: Frontend lint and build

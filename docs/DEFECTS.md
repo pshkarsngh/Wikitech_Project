@@ -2,14 +2,22 @@
 
 ## Find the Missing Connections
 
-**Version:** 1.1
+**Version:** 1.2
 **Date:** 27 September 2026
-**Status:** Open
+**Status:** All six entries fixed; **no entry verified against a deployed stack**
 **Owner:** `unassigned`
 
 Every entry was reproduced on the working tree at `6336d1f` unless stated otherwise.
 "Blocking" means the user-visible result is wrong or a required behaviour does not
 happen — not merely untidy.
+
+DEF-006 was found on 27 September 2026, after `704e763`, by the first execution of the
+persistence write path — that is B6 in `PUBLIC-READINESS.md`, and it is worth recording
+where the list stopped being a review of a commit and became a record of a running
+system. DEF-001, DEF-002 and DEF-004 are backends that were fixed but never deployed;
+DEF-005 was a first-run schema defect, still conditional on `init.sql` being applied
+before first start. The list is open because five entries are fixed and one is fixed in
+this change, with none of it verified against a deployed stack.
 
 ---
 
@@ -154,6 +162,67 @@ newer run has started. An id check rather than an `AbortController` because `run
 
 ---
 
+## DEF-006 — The analysis cache was written under a key nothing ever looked up
+
+**Severity:** Blocking — every request re-crawls Wikipedia, so the deployment spends
+somebody else's quota for an answer it already has
+**Status:** **Fixed** — `repository._upsert_article` now writes `title_key(...)`; 13
+executed tests in `tests/test_persistence.py`
+**Component:** `backend/app/repository.py` → `_upsert_article` (the write) against
+`cached_analysis` (the read)
+
+### What happens
+
+The writer and the reader disagreed about the case of the lookup key:
+
+```python
+# _upsert_article
+"normalized_title": normalize_title(article.title),   # "Ada Lovelace"
+# cached_analysis
+select(Article.analysis_payload, ...).where(Article.normalized_title == title_key(title))
+                                                            # "ada lovelace"
+```
+
+`normalized_title` is `VARCHAR(512)` and PostgreSQL compares it case-sensitively, so the
+read matched nothing — for any article. Verified directly against PostgreSQL 18: insert a
+row with the display spelling, select it with the lowercase key, 0 rows.
+
+The consequence is not a degraded cache but a dead one. `X-Cache` is always `miss`, the
+one-hour `analysis_cache_ttl_seconds` never applies, and every `POST /api/analyze` spends
+25–35 calls on Wikimedia to recompute an answer that is sitting in the database. Three
+things had been built to serve this path and none of them ever fired: the
+`articles.analysis_payload` column, the `ix_articles_normalized_title` index, and the
+example query at the bottom of `database/init.sql`, which already compares the column to
+`lower('ada lovelace')`.
+
+### Why it survived
+
+It was introduced in `704e763`, the same commit that added the read path. Every test in
+the repository runs with an empty `DATABASE_URL`, so `cached_analysis` was only ever
+exercised on its "no database configured" branch — which returns `None` and is correct.
+`test_repository.py` pinned the freshness arithmetic and the payload round trip, neither of
+which touches SQL.
+
+This is finding B6 of `PUBLIC-READINESS.md` made concrete: the write path had never been
+executed by a test. Writing that test found this on its first run, in the assertion that a
+stored analysis comes back.
+
+### Fix
+
+One line. Both sides now call `title_key`, which is the point — `normalize_title` preserves
+case and `title_key` does not, and this column is a lookup key, not a display title. The
+column's meaning is unchanged: `init.sql` already documented the lowercase form.
+
+**On a database that already holds rows:** every existing `normalized_title` holds the
+display spelling and will never be matched again. That is a cache miss, not data loss — the
+next analysis of each article rewrites the row with the key, and `article_links` and
+`analysis_runs` are untouched. No migration is needed and no index has to be rebuilt. What
+does happen, once, is that every cached answer is recomputed the first time it is asked for,
+so a deploy that lands with the default 6 requests/minute limiter should expect a short
+burst of Wikimedia calls and not read it as a regression.
+
+---
+
 ## DEF-001 — `article_links` insert aborts on case-variant duplicates
 
 
@@ -244,10 +313,11 @@ The six undefined CSS custom properties previously listed here were re-checked o
 27 September 2026 and are **not** a defect: `frontend/src/index.css` defines 54 tokens,
 `frontend/src` references 43 distinct ones, and the intersection leaves **0** undefined.
 
-Five defects are now closed: **DEF-001** and **DEF-002** (fixed in `e8a062a`), and
-**DEF-003**, **DEF-004** and **DEF-005** (fixed 27 September 2026, described above). No
-defect is open.
+Five defects were closed earlier: **DEF-001** and **DEF-002** in `e8a062a`, and **DEF-003**,
+**DEF-004** and **DEF-005** on 27 September 2026. **DEF-006** was found and fixed the same
+day, while closing B6 of `PUBLIC-READINESS.md` — the first executed test of the write path
+failed on its first run. **Six are closed and none is open.**
 
 The next entries belong to `PUBLIC-READINESS.md`, which lists what is still missing rather
-than what is broken: rate limiting, authentication, an unbounded-growth path, a read path
-for the database, security headers and TLS.
+than what is broken: authentication, TLS, an application rate limit behind nginx, an
+executed test for the `looks_like_person` classifier, and the licence.
