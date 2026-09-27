@@ -28,6 +28,23 @@ Then point the backend at it:
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/find_missing
 ```
 
+The published port is bound to `127.0.0.1`, so the database is reachable from this
+machine only. `"5432:5432"` would listen on every interface, which on a laptop on
+wifi puts the whole local network inside the trust boundary. Nothing here is
+secret — it is a cache of public Wikipedia data — but a port you did not mean to
+open should not be open.
+
+`POSTGRES_PASSWORD` defaults to `postgres` and can be overridden:
+
+```bash
+POSTGRES_PASSWORD=my-own-value docker compose up -d
+```
+
+Set it before reusing any of this in a real deployment. Changing it has no effect
+on an existing `pgdata` volume: the image only applies it when it first creates
+the data directory, so you would need `docker compose down -v` (which deletes the
+cache) to apply a new one.
+
 ## Tables
 
 | Table           | Purpose                                                                  |

@@ -109,7 +109,11 @@ These are load-bearing. Breaking one breaks the tests or the deployment.
 * Services raise `WikipediaError` / `ArticleNotFoundError`. Routers translate via their
   local `_upstream_error(exc)` and always `raise ... from exc`.
 * A database problem must never fail a request. `db.session_scope()` yields `None` when
-  the engine is unavailable, and `repository` degrades to no-op persistence.
+  the engine is unavailable, and `repository` degrades to no-op persistence. "A database
+  problem" is meant literally: the catch is `SQLAlchemyError`, not `Exception`, because
+  the `try` wraps the caller's `yield` and a broad catch would absorb our own bugs behind
+  a log line blaming the database. `ping()` is the deliberate exception — no caller code
+  runs inside its `try`, and the container `HEALTHCHECK` needs it never to raise.
 * A partial answer must never masquerade as a complete one. `build_extracted_links`
   (`services/analysis.py:278-284`) drops any link the existence check did not answer
   rather than guessing `exists`/`missing`.
@@ -213,6 +217,10 @@ Backend (pytest):
   logs and swallows, so a failed query returns an empty result and the test reports a
   missing row instead of the error. A bare `Connection` is not a substitute either —
   executing an ORM `select()` on one returns column values, not objects.
+* `backend/tests/test_db.py` needs no `TEST_DATABASE_URL` and is not a persistence test.
+  It drives `session_scope` with a stub session, deliberately, so the assertion that a
+  caller's `TypeError` propagates runs in a plain `pytest` rather than being skipped. Do
+  not "tidy" it into `test_persistence.py` — that would move the guard behind a skip.
 
 Frontend (vitest, `npm run test`):
 

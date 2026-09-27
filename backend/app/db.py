@@ -2,7 +2,9 @@
 
 The database is optional. When ``DATABASE_URL`` is empty the app still answers
 requests, it just does not cache anything. A failing commit is logged and
-swallowed, so a database problem can never take the API down.
+swallowed, so a database problem can never take the API down. "A database
+problem" is meant literally: a bug in our own code is not swallowed, because
+swallowing it hides the bug behind a log line that blames the database.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -45,8 +48,15 @@ def get_engine() -> Engine | None:
 def session_scope(*, read_only: bool = False) -> Iterator[Session | None]:
     """Yield a session, or ``None`` when persistence is disabled.
 
-    Failures while committing are logged and ignored: the caller has already
-    built its response and the cache is only an optimisation.
+    Database failures are logged and ignored: the caller has already built its
+    response and the cache is only an optimisation. The catch is deliberately
+    narrowed to :class:`SQLAlchemyError` for that reason, because the ``yield``
+    sits inside the ``try`` and so the caller's own code is inside it too. A
+    ``TypeError`` raised by a repository is a bug, not an outage, and swallowing
+    it here logged "Database write failed" for a database that was working
+    perfectly - the log pointed the investigation at the wrong component and the
+    caller carried on with a silently dropped write. Programming errors now
+    propagate; ``finally`` still closes the session, so nothing leaks.
 
     ``read_only`` yields the same session but never commits, for the cache lookup. The
     read path has nothing to write, and a read-only scope must not be able to leave a
@@ -62,7 +72,7 @@ def session_scope(*, read_only: bool = False) -> Iterator[Session | None]:
         yield session
         if not read_only:
             session.commit()
-    except Exception:  # noqa: BLE001 - persistence must never break a request
+    except SQLAlchemyError:
         logger.exception("Database write failed, continuing without cache")
         session.rollback()
     finally:
@@ -76,6 +86,12 @@ def create_all() -> None:
 
 
 def ping() -> bool:
+    # The broad catch here is not the one narrowed in session_scope, and the
+    # difference is deliberate: no caller code runs inside this try, so there is
+    # no caller's bug to mislabel. The guarantee that matters is that this never
+    # raises, because the container HEALTHCHECK reads /api/health and an
+    # exception here would surface as a crash rather than as an unhealthy
+    # container with a diagnosis.
     if _engine is None:
         return False
     try:

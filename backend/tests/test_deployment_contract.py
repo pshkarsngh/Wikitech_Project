@@ -494,17 +494,37 @@ def test_the_database_port_is_never_published(compose: Path) -> None:
 
 
 def test_the_dev_database_port_is_bound_to_loopback() -> None:
-    """database/docker-compose.yml is a convenience file and publishes 5432 on all
-    interfaces with the password `postgres`."""
+    """database/docker-compose.yml is a convenience file, so it does publish 5432.
+
+    The publisher still has to be the host's own loopback interface. It used to be
+    bound to every interface with the password `postgres`, which on a laptop on
+    wifi meant the whole local network could reach the cache.
+    """
 
     text = _read(DB_COMPOSE)
-    published = re.findall(r'^\s*-\s*"([^"]*:\d+:\d+)"', text, re.MULTILINE)
-    for mapping in published:
-        host_port = mapping.split(":")[0]
-        assert host_port in {"127.0.0.1", "localhost"}, (
-            f"database/docker-compose.yml publishes {mapping} on every interface with a "
-            "default password. Bind it to loopback."
+    # Matches both "5432:5432" and "127.0.0.1:5432:5432". The previous pattern
+    # required the host field, so the two-part form it was written to catch was
+    # the one form it could not see, and this test passed against the exact
+    # configuration it exists to prevent.
+    published = re.findall(r'^\s*-\s*"([\d.]*)\s*:?\s*"?(\d+:\d+)"?', text, re.MULTILINE)
+    assert published, "database/docker-compose.yml publishes no port mapping; expected one"
+    for host_port, _mapping in published:
+        assert host_port in {"127.0.0.1", "localhost", "::1"}, (
+            f"database/docker-compose.yml publishes {host_port or '<every interface>'} on "
+            "every interface. Bind it to loopback."
         )
+
+
+def test_the_dev_database_password_is_overridable() -> None:
+    """A committed default is fine for a loopback throwaway; it is not fine if it
+    is the only way to run the file, because then it becomes the password people
+    copy into a real deployment."""
+
+    text = _read(DB_COMPOSE)
+    assert "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD" in text, (
+        "database/docker-compose.yml hardcodes POSTGRES_PASSWORD. Read it from the "
+        "environment so a real deployment is not stuck with the dev default."
+    )
 
 
 # --- application --------------------------------------------------------------

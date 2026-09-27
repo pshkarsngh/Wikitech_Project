@@ -138,7 +138,7 @@ installed tool.** They are leftovers from a linter that is not present.
 
 | Done | Count | Code | Linter | Locations |
 | ---- | ----: | ---- | ----- | --------- |
-| [x] | 4 | `BLE001` | ruff (blind `except Exception`) | `app/db.py:60`, `app/db.py:79`, `app/main.py:43`, `app/services/classifier.py:93` |
+| [x] | 4 | `BLE001` | ruff (blind `except Exception`) | `app/db.py:100` (`ping` only — `session_scope` was narrowed to `SQLAlchemyError`), `app/main.py:43`, `app/services/classifier.py:93` |
 | [x] | 3 | `D107` | pydocstyle (missing docstring in `__init__`) | `tests/test_mediawiki.py:54`, `:67`, `:269` |
 
 Keep them as written. They are documentation of intent, not configuration. Deleting
@@ -162,7 +162,7 @@ them would violate the scope lock in §1.3.
 | [ ] | `backend/app/__init__.py` | Package root, exports `__version__ = "0.1.0"`. | Keep in sync with `config.version`. |
 | [ ] | `backend/app/main.py` | `create_app()`, lifespan, CORS middleware, global `WikipediaError` handler, `/api/health`, `/`. | `main.py:33-36` only assigns `app.state` when it is `None` — never make it unconditional. Extend the existing CORS config and exception handler; do not add a parallel error path. |
 | [ ] | `backend/app/config.py` | `Settings` (pydantic-settings) and `get_settings()` (`@lru_cache`). `api_prefix = "/api"` at line 15. | `env_file` is relative, so `.env` only loads when CWD is `backend/`. Settings are read once per process; changing `.env` needs a restart. |
-| [ ] | `backend/app/db.py` | Engine, `session_scope()` contextmanager, `Base.metadata.create_all`, `ping()`. | `session_scope()` yields `None` when the engine is unavailable (`db.py:53`) — persistence must never fail a request. The `# noqa: BLE001` at lines 60 and 79 is deliberate. |
+| [ ] | `backend/app/db.py` | Engine, `session_scope()` contextmanager, `Base.metadata.create_all`, `ping()`. | `session_scope()` yields `None` when the engine is unavailable (`db.py:53`) — persistence must never fail a request. It catches `SQLAlchemyError`, **not** `Exception`, because the `try` wraps the caller's `yield` and a broad catch logged our own bugs as `"Database write failed"`. The single remaining `# noqa: BLE001` is `ping()`, deliberate: no caller code runs in its `try` and the `HEALTHCHECK` needs it never to raise. |
 | [ ] | `backend/app/models.py` | SQLAlchemy tables: `articles` (line 35), `article_links` (line 60), `analysis_runs` (line 88), plus `Base` (line 28). | **Two-file invariant:** must be updated together with `database/init.sql`. |
 | [ ] | `backend/app/repository.py` | The only module that writes rows. Stores analyses, replaces an article's links wholesale, records runs. | Broad `except Exception` is intentional — persistence degrades to no-op rather than failing the request. |
 | [ ] | `backend/app/schemas.py` | Pydantic request/response models, `ExistenceMixin.state` computed field, `ConnectionState` literal. | `state` is `@computed_field`, not settable. API tests assert exact payload dicts, so adding or renaming a field breaks the suite. |
@@ -227,6 +227,7 @@ The count moved from 68 to 77 because `tests/test_frontend_contract.py` contribu
 | [ ] | `backend/tests/smoke_live.py` | Live script against the real MediaWiki/Wikidata APIs. | **Not collected by pytest** (filename does not match `test_*.py`) and not a substitute for it. The only file permitted to touch the network, and only when run deliberately. |
 | [ ] | `backend/tests/test_frontend_contract.py` | 9 tests. Reads frontend source as text and asserts token and stylesheet contracts: every referenced `var(--x)` is declared, status/entity hues stay distinct, `--positive` has not returned, the map styles `node[!exists]`, entity nodes differ by shape, `entityType` is forwarded, the legend names every node type — and `test_cytoscape_styles_never_use_css_custom_properties`, the UAT-01 guard. | **Untracked.** Resolves `FRONTEND_SRC` as `parents[2] / "frontend" / "src"`, so it breaks if the directory layout changes. Its assertions are about *source text*, not rendered output, and it must not be described as a browser test. It caught the broken `var()` form in the map but only because UAT-01 was being investigated — it did not catch the bug when it was introduced. |
 | [ ] | `backend/tests/test_persistence.py` | 13 tests. The only module that opens a PostgreSQL connection: the write path, the read path, the redirect duplicate, `uq_link` itself, the retention prune, a swallowed constraint violation, the schema the models declare, and re-applying `init.sql` to a database the app already created. | **Skipped unless `TEST_DATABASE_URL` is set** and names a database containing `test`; every test truncates. It found DEF-006 on its first run. A second CI step fails the job if it skips. See `AGENTS.md` §8. |
+| [ ] | `backend/tests/test_db.py` | 7 tests. `session_scope` absorbs a `SQLAlchemyError` and lets a caller's own `TypeError` propagate, closes the session either way, never commits a read-only scope, and yields `None` when persistence is disabled. | **Needs no database** — it drives a stub session, so the B5 guard runs in a plain `pytest` instead of hiding behind `TEST_DATABASE_URL`. Reverting the `except` fails it. |
 
 ---
 
@@ -245,7 +246,7 @@ The count moved from 68 to 77 because `tests/test_frontend_contract.py` contribu
 
 | Done | File | Purpose | Check when touched |
 | ---- | ---- | ------- | ------------------ |
-| [ ] | `database/docker-compose.yml` | `postgres:16-alpine`, container `find-missing-db`, db/user/password all `find_missing`/`postgres`, port 5432, named volume `pgdata`, healthcheck via `pg_isready`. | `init.sql` is mounted read-only and runs on **first volume creation only**. |
+| [ ] | `database/docker-compose.yml` | `postgres:16-alpine`, container `find-missing-db`, db/user `find_missing`/`postgres`, password `${POSTGRES_PASSWORD:-postgres}`, port **bound to `127.0.0.1:5432`**, named volume `pgdata`, healthcheck via `pg_isready`. | `init.sql` is mounted read-only and runs on **first volume creation only**. The loopback bind is C10: `5432:5432` listened on every interface. Both deploy stacks correctly use `expose` instead, and a contract test enforces it — which is itself only meaningful because its regex was fixed to see the two-part form. |
 | [ ] | `database/init.sql` | `articles`, `article_links`, `analysis_runs`; wrapped in `BEGIN;`/`COMMIT;` with `IF NOT EXISTS` throughout; ends with three documented example queries. | **Two-file invariant:** must be updated together with `backend/app/models.py`. Already carries one object the models do not: the partial index `ix_article_links_missing ON article_links (target_normalized_title) WHERE NOT exists`. `create_all()` will never produce it. |
 | [ ] | `database/README.md` | States the models ↔ `init.sql` obligation explicitly. | The documented reason the two-file invariant exists. |
 

@@ -6,9 +6,15 @@ services:
     environment:
       POSTGRES_DB: find_missing
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # Loopback-only database holding nothing but a cache of public Wikipedia data,
+      # so a committed default is acceptable here - but only because it is unreachable
+      # off this machine, and only because the value can be overridden. The published
+      # port below is bound to 127.0.0.1 for the same reason: "5432:5432" listens on
+      # every interface, which on a laptop on wifi means the whole local network can
+      # reach it. Set POSTGRES_PASSWORD before reusing any of this in a real deployment.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
