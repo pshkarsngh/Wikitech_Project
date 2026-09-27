@@ -200,7 +200,8 @@ def test_analyze(client: TestClient) -> None:
     assert response.status_code == 200
     summary = response.json()["summary"]
     assert summary == {
-        "total_links": 4,
+            "total_links": 4,
+            "total_articles": 4,
         "total_missing": 2,
         "total_one_way": 1,
         "one_way_targets_checked": 2,

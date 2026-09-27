@@ -636,7 +636,7 @@ limiter is bypassable with one header. Fix C5 in the same change.
 | -- | --- |
 | **D1** | Extend the CI `schema` job. `ci.yml:155-156` already parses both files; compare columns and indexes, not just table names. There is live drift to catch: `models.py:97` creates a plain index on `analysis_runs.created_at` while `init.sql:59-60` creates it `DESC`. |
 | **D2** | The researched answer, since there is still no migration tool: add an idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` block to `init.sql`, after the `CREATE TABLE IF NOT EXISTS` statements and inside the same transaction. It preserves the two properties `ROLLBACK.md` §1 depends on — additive only, no `DROP` — and unlike the `CREATE TABLE IF NOT EXISTS` statements it is not a no-op against an existing table. `deploy/README.md` already tells operators to apply `init.sql` by hand; this makes that instruction actually work. |
-| **D3** | The decision is still a person's: what does `total_links` count? The researched note is that `GET /api/connections/map` and `POST /api/analyze` must agree, or the smoke test's own invariant (`smoke_test.py:250-258`, which compares `summary.total_*` against array lengths) starts failing for a different reason. |
+| **D3** | **Decided 27 Sep 2026 and closed.** `total_links` keeps its value — link targets as written, de-duplicated by string before redirects are followed — and `total_articles` was added for the resolved count, keyed by `page_id` for existing targets and by title for missing ones. Redefining the existing field was rejected: it discards a real fact (an author who links a page three times wrote three links) and would have broken the exact-payload tests for a cosmetic gain. The smoke test's concern does not apply — `GET /api/connections/map` returns a `ConnectionMap` with nodes and edges and no summary at all, so there is no second route to disagree with `POST /api/analyze`. `smoke_test.py` now asserts `0 < total_articles <= total_links`. |
 | **D4** | 4 people from 444 links. The `general` omission at `classifier.py:26-29` is deliberate and defensible. Worth measuring before users depend on the split — and B7's dead second pass was presumably the intended mitigation. |
 | **D5** | Fix `DEFECTS.md` and `CHECKLIST.md` in the same commits as the code they describe, per `AGENTS.md` §11. |
 
@@ -662,7 +662,7 @@ resolved there, with the source URL and the date. Otherwise the next maintainer 
 | 8 | Log driver → `local`; retention on `analysis_runs` | A4 | None. Verify `docker compose logs` still works. |
 | 9 | CSP report-only, then enforce; other headers; `TrustedHost`; `GZip`; drop `--forwarded-allow-ips '*'`; `client_max_body_size` | C1, C2, C4, C5 | **CSP can break the app invisibly** — no browser here can see it. Report-only first. |
 | 10 | `ErrorBoundary`; per-title length cap; loopback DB port; staging `connect_timeout`; doc corrections | C3, C9, C10, C11, D1, D5 | None. |
-| 11 | Decisions for a person: auth model, licence, `total_links`, schema mechanism | A3, C13, D2, D3 | — |
+| 11 | Decisions for a person: auth model, licence, schema mechanism | A3, C13, D2 | — |
 
 Steps 1–4 are independent and each is small. Step 4's map-folding should come after step 2
 so the extra upstream cost is visible in the rate-limit budget before it is tuned.

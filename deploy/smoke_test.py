@@ -264,6 +264,17 @@ def check_analyze(report: Report, args: argparse.Namespace) -> dict[str, Any]:
             f"{summary['total_links']} in the article",
         )
 
+        # total_articles is total_links after redirects are resolved, so it can
+        # only be smaller. Equal means the article linked no redirect under two
+        # names, which is the common case; smaller is UAT-02's Ghalib.
+        articles = summary.get("total_articles")
+        _require(articles is not None, "summary has no total_articles field")
+        _require(
+            0 < articles <= summary["total_links"],
+            f"summary.total_articles={articles} is not a positive count no larger "
+            f"than total_links={summary['total_links']}",
+        )
+
         parts = [
             f"{summary.get('total_people', 0)} people",
             f"{summary.get('total_places', 0)} places",

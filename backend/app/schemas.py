@@ -125,7 +125,15 @@ class OneWayConnection(BaseModel):
 
 
 class AnalysisSummary(BaseModel):
+    # Link targets found in the wikitext, counted as written and before redirects
+    # are followed, so two spellings of one redirect both count. `total_articles`
+    # is the same set after resolution, keyed by page, which is what a reader can
+    # count in the lists. The two differ only when the article links a redirect
+    # under more than one name, so both are carried rather than one being
+    # redefined: the raw count is a fact about the article, the other is a fact
+    # about the destination.
     total_links: int = 0
+    total_articles: int = 0
     total_missing: int = 0
     total_one_way: int = 0
     one_way_targets_checked: int = 0

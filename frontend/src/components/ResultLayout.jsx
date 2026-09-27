@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+
 import ApiKeyPrompt from './ApiKeyPrompt'
 import ArticleSummary from './ArticleSummary'
 import SearchBar from './SearchBar'
@@ -11,6 +13,18 @@ export default function ResultLayout({ children, showSummary = true, loadingLabe
   const { error, article, summary, generatedAt, run } = useAnalysis()
 
   const isIdle = !title || status === 'idle'
+
+  // The two counts differ only when the article links one redirect under more
+  // than one name, so the raw figure is only worth the line when it is not
+  // redundant. Showing both always would read as "440 articles / 444 links" on
+  // pages where they are the same number, which looks like an error.
+  const linksHint = useMemo(() => {
+    if (summary.links_truncated) return 'at least this many, capped by budget'
+    if (summary.total_links !== summary.total_articles) {
+      return `${summary.total_links} link targets`
+    }
+    return 'main-namespace links'
+  }, [summary.total_links, summary.total_articles, summary.links_truncated])
 
   return (
     <div>
@@ -44,9 +58,9 @@ export default function ResultLayout({ children, showSummary = true, loadingLabe
 
           <div className={styles.stats}>
             <StatCard
-              label="Links found"
-              value={summary.total_links}
-              hint="main-namespace links"
+              label="Articles linked"
+              value={summary.total_articles}
+              hint={linksHint}
               tone="links"
             />
             <StatCard

@@ -6,6 +6,7 @@ const AnalysisContext = createContext(null)
 
 const EMPTY_SUMMARY = {
   total_links: 0,
+  total_articles: 0,
   total_missing: 0,
   total_one_way: 0,
   one_way_targets_checked: 0,

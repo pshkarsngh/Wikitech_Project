@@ -154,12 +154,22 @@ fix: 425 links, 11 collisions, **0 rows written**, no error surfaced to the call
 writes 843 `article_links` rows. Fixed by collapsing duplicates on the constraint's own
 key in `repository._link_rows`, with 8 regression tests in `tests/test_repository.py`.
 
-**Cosmetic half — still open, genuinely non-blocking.** The link list still shows `Ghalib`
-twice, and `summary.total_links` still counts both. That is arguably faithful — the
-article really does mention the target twice — but it inflates the count and makes the
-list look wrong. Not fixed here because changing it changes what `total_links` means,
-which is a contract change for the exact-payload tests in `AGENTS.md` §8, not a UAT fix.
-Assign it before Phase 9.
+**Cosmetic half — RESOLVED 27 September 2026, by decision rather than by fix.** The link list
+showed `Ghalib` twice and `summary.total_links` counted both. The reasoning at the time was that
+changing it changes what `total_links` means, which is a contract change for the exact-payload
+tests in `AGENTS.md` §8 — correct, and the reason it was assigned to nobody.
+
+The decision taken: `total_links` **keeps** its meaning (link targets as written in the wikitext,
+de-duplicated by string before redirects are followed), and a new `total_articles` carries the
+resolved count. Both are returned, so the honest raw figure is not thrown away to make a tile
+tidier, and the existing field is not silently redefined. The summary tile now shows
+`total_articles` — the number a reader can count in the lists beneath it — and prints
+`total_links` alongside it only when the two differ, since "440 articles / 444 links" on a page
+where they are equal reads like a bug. `links_truncated` now also changes the hint, because when
+the budget capped the crawl the count is a floor rather than a total.
+
+No database column was added: `analysis_runs` keeps recording the raw figure, and the two-file
+invariant in §10 of `AGENTS.md` is untouched.
 
 ### UAT-03 — Frontend image could not build, and `.env` was one COPY away — FIXED
 
@@ -216,7 +226,7 @@ without the code means the next release re-breaks UAT-02.
 
 | Item | Owner | Why it is not ticked |
 | ---- | ----- | -------------------- |
-| UAT-02 display half: `Ghalib` listed twice, `total_links` counts both | unassigned | Needs a decision on what `total_links` should count. The blocking half is fixed. |
+| UAT-02 display half: `Ghalib` listed twice, `total_links` counts both | — | **Resolved** 27 September 2026 by decision: `total_links` keeps its as-written meaning and `total_articles` was added for the resolved count. See §5. |
 | Human look at `/connection-map` | UAT owner | No browser automation exists; see §4. |
 | Phase 6 sign-off | UAT owner | A human action. |
 | Release candidate approval | Release owner | Phase 7 entry criterion; the release is deployed and verified, this is the signature. |

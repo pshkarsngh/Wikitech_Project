@@ -86,7 +86,41 @@ class LinkGraph:
 
     @property
     def total_links(self) -> int:
+        """Link targets as written in the wikitext, before redirects are followed.
+
+        De-duplicated by string, not by destination, so two spellings of one
+        redirect (``Ghalib`` and ``Mirza Ghalib``) both count. This is the honest
+        count of links the author wrote and it does not change when Wikipedia
+        redirects change.
+        """
+
         return len(self.order)
+
+    @property
+    def total_articles(self) -> int:
+        """Distinct articles those links resolve to.
+
+        Two link targets can land on one page, so this is smaller than
+        ``total_links`` whenever the article links a redirect under more than one
+        name. It is the number a reader can actually count in the lists below the
+        summary, which de-duplicate the same way.
+
+        Existing targets are keyed by ``page_id`` because a canonical title is not
+        guaranteed unique across namespaces; missing targets have no page, so they
+        are keyed by their title. A link whose existence check came back empty is
+        in neither list and so is counted by neither, which is the conservative
+        direction for a count presented as "how many articles this links to".
+        """
+
+        keys: set[str] = set()
+        for item in self.existing:
+            if item.page_id is not None:
+                keys.add(f"page:{item.page_id}")
+            else:
+                keys.add(f"title:{title_key(item.title or item.requested)}")
+        for item in self.missing:
+            keys.add(f"title:{title_key(item.title or item.requested)}")
+        return len(keys)
 
 
 @dataclass
@@ -438,6 +472,7 @@ async def analyze_article(
         generated_at=_utcnow(),
         summary=AnalysisSummary(
             total_links=graph.total_links,
+            total_articles=graph.total_articles,
             total_missing=len(missing),
             total_one_way=len(one_way.connections),
             one_way_targets_checked=one_way.checked_count,

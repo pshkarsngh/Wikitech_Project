@@ -467,6 +467,65 @@ async def test_a_redirect_does_not_overwrite_another_links_result(
     assert all(link.redirected is False for link in result.links)
 
 
+async def test_two_spellings_of_one_redirect_count_as_two_links_and_one_article(
+    settings: Settings,
+) -> None:
+    # The Chandni Chowk / Ghalib shape from UAT-02: the article links a page
+    # under its own name and again under a name that redirects to it, so the
+    # wikitext holds two link targets while one article is at the other end.
+    # Both numbers are carried because both are true - total_links as written,
+    # total_articles as resolved - and this asserts they are not the same field
+    # by accident.
+    client = FakeWikipediaClient()
+    get_links = client.get_article_links
+    resolve = client.resolve_titles
+
+    async def with_a_second_spelling_of_engine(title, *, max_links=None):
+        links = await get_links(title, max_links=max_links)
+        links.links.append("The Analytical Engine")
+        return links
+
+    async def resolve_the_second_spelling_to_the_same_page(titles):
+        resolved = await resolve(titles)
+        # Replace the base answer rather than appending after it: the first entry
+        # for a title wins, so an appended one would be ignored and the link
+        # would come back missing.
+        return [
+            *(
+                item
+                for item in resolved
+                if item.requested != "The Analytical Engine"
+            ),
+            ResolvedTitle(
+                requested="The Analytical Engine",
+                title=ENGINE,
+                page_id=2,
+                url="https://en.wikipedia.org/wiki/Analytical_Engine",
+                exists=True,
+                redirected=True,
+            ),
+        ]
+
+    client.get_article_links = with_a_second_spelling_of_engine  # type: ignore[method-assign]
+    client.resolve_titles = resolve_the_second_spelling_to_the_same_page  # type: ignore[method-assign]
+
+    baseline = await analyze_article(FakeWikipediaClient(), settings, ADA)
+    result = await analyze_article(client, settings, ADA)
+
+    assert result.summary.total_links == baseline.summary.total_links + 1
+    assert result.summary.total_articles == baseline.summary.total_articles
+
+
+async def test_article_with_no_collisions_reports_both_counts_as_equal(
+    settings: Settings,
+) -> None:
+    # The common case, asserted so the test above cannot pass by making the two
+    # numbers differ unconditionally.
+    result = await analyze_article(FakeWikipediaClient(), settings, ADA)
+
+    assert result.summary.total_links == result.summary.total_articles
+
+
 async def test_connection_map_edges_carry_direction_status(settings: Settings) -> None:
     client = FakeWikipediaClient()
     graph = await build_link_graph(client, settings, ADA)

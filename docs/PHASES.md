@@ -553,9 +553,10 @@ and adds the one thing a CSS check cannot: that Cytoscape is never handed a `var
   which is precisely what Cytoscape discards.
 * [x] No unresolved blocking defect remains. Both blockers are fixed and
   regression-guarded: UAT-01 (Cytoscape discarding every colour) and UAT-02 (a
-  unique-constraint violation discarding every database write). One cosmetic half of
-  UAT-02 remains open and is recorded in `docs/UAT.md` §5 — it needs a decision on what
-  `total_links` counts, not a code fix. **Tickable without the QA Lead's signature; the
+  unique-constraint violation discarding every database write). The cosmetic half of
+  UAT-02 was decided on 27 September 2026 and is closed: `total_links` kept its meaning
+  and `total_articles` was added beside it, so nothing was redefined. Recorded in
+  `docs/UAT.md` §5. **Tickable without the QA Lead's signature; the
   sign-off item at §9 is still open.**
 
 ## 9. Sign-off
@@ -581,9 +582,9 @@ Dockerfiles, nginx serving the SPA and proxying the API, PostgreSQL live — and
 (`docs/UAT.md` §5, UAT-01: Cytoscape discarded every design token, so missing
 entities were not highlighted at all). Outstanding:
 
-* One **non-blocking** defect left open: the same target is listed twice when an
-  article links both a name and its redirect (UAT-02). Needs a decision on what
-  `total_links` should count.
+* No **non-blocking** defect left open from UAT-02: the same target listed twice
+  when an article links both a name and its redirect was decided on 27 September
+  2026 and closed (`docs/UAT.md` §5).
 * The connection map was never looked at. Highlighting is CSS and Cytoscape
   styling, and this repository has no browser automation, so UAT-01's fix is
   verified at the source level only. A human must open `/connection-map` and
@@ -833,9 +834,10 @@ Lead's.
   `test_cytoscape_styles_never_use_css_custom_properties`.
 * [x] `[Name]` records production defects. `docs/UAT.md` §5 — UAT-01, UAT-02, UAT-03, all
   found during this release cycle and all fixed.
-* [ ] `[Name]` confirms any production defect is assigned to an owner. The one open
-  cosmetic item (`Ghalib` listed twice, `total_links` counting both) is **unassigned** in
-  `docs/UAT.md` §8. It needs a name, and that name is a person, not a decision I can make.
+* [x] `[Name]` confirms any production defect is assigned to an owner. The one open
+  cosmetic item (`Ghalib` listed twice, `total_links` counting both) was decided on
+  27 September 2026 and is no longer unassigned in `docs/UAT.md` §8 — it needed a
+  decision, and carrying both counts was one.
 
 ## 4. Deliverables
 
