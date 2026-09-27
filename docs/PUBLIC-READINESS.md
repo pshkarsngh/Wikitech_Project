@@ -2,7 +2,7 @@
 
 ## Find the Missing Connections
 
-**Version:** 1.2
+**Version:** 1.4
 **Date:** 27 September 2026
 **Base commit:** `e8a062a`
 **Status:** Open — see the implementation note below
@@ -23,16 +23,15 @@
 >
 > Still open: **A3**'s remaining half — no request logging, no metrics, no alerting, and
 > one IP as the only unit of punishment; **B4** the seed link-pagination loop has no
-> iteration cap; **B5** `session_scope` still swallows a caller's own bug as a database
-> failure; **B7** `looks_like_person` can never return `True`; **C2** no TLS;
+> iteration cap; **B7** `looks_like_person` can never return `True`; **C2** no TLS;
 > **C7** no cancellation on disconnect; **C6** a 120s nginx read timeout is a ceiling the
-> worst case can still exceed, because nothing bounds total analysis wall-clock; **C10** the dev database
-> still publishes 5432 with a default password; **C12** the SQLite fallback
+> worst case can still exceed, because nothing bounds total analysis wall-clock;
+> **C12** the SQLite fallback
 > `ARCHITECTURE.md` §11.8 promises is still impossible; **C13** no `LICENSE` or root
-> `README.md`; **D3** what `total_links` counts; **D4** the classifier; **D5** the
+> `README.md`; **D4** the classifier; **D5** the
 > remaining documentation drift.
 >
-> The suite is **195 backend with a database (182 without, one module skipped) + 42
+> The suite is **205 backend with a database (192 without, one module skipped) + 47
 > frontend**. Nothing in this list has been verified against a deployed stack.
 
 
@@ -119,7 +118,7 @@ commits and in `DEFECTS.md`.
 | B2 | `/connections/map` classifies missing titles twice | Bug | Fixed in `704e763` — one `classify_links` call |
 | B3 | Stale-response race overwrites the current result | Bug | Fixed in `704e763` — request-identity guard |
 | B4 | Link-pagination loop has no iteration cap | Bug | Open |
-| B5 | `session_scope` mislabels code bugs as DB failures | Bug | Open |
+| B5 | `session_scope` mislabels code bugs as DB failures | Bug | Fixed |
 | B6 | The entire database write path is untested | Bug | Fixed — found DEF-006 on the first run |
 | B7 | `looks_like_person` can never return `True` | Bug | Open |
 | C1 | No security headers on any response | Hardening | Fixed in `704e763` — `security-headers.conf` |
@@ -131,13 +130,13 @@ commits and in `DEFECTS.md`.
 | C7 | No cancellation when the client disconnects | Hardening | Open |
 | C8 | Retries ignore `Retry-After` | Hardening | Fixed in `704e763` |
 | C9 | No React error boundary | Hardening | Fixed in `704e763` — `ErrorBoundary` |
-| C10 | Dev database publishes 5432 with a default password | Hardening | Open |
+| C10 | Dev database publishes 5432 with a default password | Hardening | Fixed |
 | C11 | Staging `DATABASE_URL` has no `connect_timeout` | Hardening | Fixed in `704e763` |
 | C12 | The SQLite fallback in `ARCHITECTURE.md` §11.8 cannot work | Hardening | Open |
 | C13 | No `LICENSE`, no root `README.md` | Gap | Open |
 | D1 | CI's schema job only compares table *names* | Gap | Fixed in `704e763` — columns too |
 | D2 | No working path to add a column to an existing table | Gap | Fixed in `704e763` — `ADD COLUMN IF NOT EXISTS` |
-| D3 | UAT-02's cosmetic half is still open | Gap | Open (cosmetic) |
+| D3 | UAT-02's cosmetic half is still open | Gap | Fixed |
 | D4 | Classifier under-detects people heavily | Gap | Open (cosmetic) |
 | D5 | `DEFECTS.md` and `CHECKLIST.md` are materially stale | Gap | Partly closed; the rest open |
 
@@ -411,7 +410,9 @@ that semaphore set to 4, four such requests stop the application answering anyth
 
 ## B5 — `session_scope` mislabels code bugs as database failures
 
-**Severity:** Bug · **Status:** `Open`
+**Severity:** Bug · **Status:** **Fixed** 27 September 2026 — narrowed to
+`except SQLAlchemyError` in `db.py`, with `tests/test_db.py` (7 tests) covering both
+sides. No schema change, so `models.py` and `init.sql` are untouched.
 
 `db.py:57-62`:
 
@@ -437,6 +438,32 @@ on call to the database instead of to `repository.py`.
 **Fix direction:** narrow the `except` to the commit, or re-raise after logging when the
 failure did not originate in the database layer — and log the exception type either way, so
 `"Database write failed"` is never the message for a `TypeError`.
+
+**Resolution:** the `except` is now `except SQLAlchemyError`, so only a failure that actually
+came from the database is absorbed. A `TypeError` three lines up in `repository.py` propagates
+and surfaces as a `500` — a repository bug should be visible immediately, not hidden behind a
+log line that blames the database.
+
+The `read_only` argument meant the naive "move the commit inside its own `try`" fix was the
+wrong one to pick: it would also have stopped the caller's own `SQLAlchemyError` from being
+rolled back, and the caller's block legitimately needs a rollback on a database error. Narrowing
+the *type* keeps the `yield` inside the `try` and so keeps `rollback()` reachable for every
+error that came from the database, at any depth in the caller's block.
+
+`finally: session.close()` still runs when an error propagates, so the connection is released
+and the open transaction discarded — a propagating error leaks nothing. Both halves of that are
+asserted.
+
+`ping()` keeps its broad `except Exception` on purpose. No caller code runs inside its `try`,
+so there is no caller's bug for it to mislabel, and the guarantee that matters there is that it
+never raises, because the container `HEALTHCHECK` reads `/api/health` and an exception would
+surface as a crash rather than as an unhealthy container with a diagnosis.
+
+**On the test:** `tests/test_db.py` drives the scope with a stub session rather than a real
+database, deliberately. The behaviour is worth guarding, and a guard that is skipped without
+`TEST_DATABASE_URL` is a guard that will not run when the behaviour breaks. Reverting the
+`except` makes `test_a_programming_error_in_the_caller_propagates` fail with the caller's
+`ValueError` printed *inside* the swallowed log line, which is the finding reproduced exactly.
 
 ---
 
@@ -539,7 +566,7 @@ not, delete it and say so in the commit — `AGENTS.md` §14 forbids deleting a 
 | **C7** | **No cancellation on client disconnect.** Navigating away from a loading page leaves the entire fan-out running to completion. | — | Propagate `Request.is_disconnected()` or a cancellation scope into the pipeline. Pair with C6. |
 | **C8** | **Retries ignore `Retry-After` and use a fixed 1 s sleep.** A 429 or 503 from Wikimedia is re-issued one second later, into the same limiter, guaranteeing a second failure. | `services/mediawiki.py:143-144` | Honour `Retry-After` when present; add jitter. `ARCHITECTURE.md` §12 already notes the absence of exponential backoff as "a possible improvement rather than a gap" — under A1 it becomes a gap. |
 | **C9** | **No React error boundary.** A search for `ErrorBoundary`, `componentDidCatch` and `getDerivedStateFromError` in `main.jsx` and `App.jsx` returns nothing. Any render-time throw produces a blank white page with no console-visible explanation for a non-technical user. | verified absent | One `ErrorBoundary` around `<App />` in `main.jsx`, with the same visual language as `ErrorMessage` in `ui.jsx:79`. |
-| **C10** | **The dev database publishes 5432 to the host with the password `postgres`**, on all interfaces. | `database/docker-compose.yml:9-11` | Bind to `127.0.0.1:5432:5432`. This is the one place in the repository where a database port is published; both deploy stacks correctly use `expose` instead. |
+| **C10** | **The dev database publishes 5432 to the host with the password `postgres`**, on all interfaces. | `database/docker-compose.yml:9-11` | **Fixed** 27 September 2026 — bound to `127.0.0.1:5432:5432` and `POSTGRES_PASSWORD` now reads `${POSTGRES_PASSWORD:-postgres}`, matching what staging already did. The default value was deliberately *kept*: it is a loopback-only throwaway holding public Wikipedia data, and changing it would silently break every existing `pgdata` volume for no security gain once the port is bound. |
 | **C11** | **Staging's `DATABASE_URL` has no `connect_timeout`.** Production sets `?connect_timeout=5` for the reason given at `docker-compose.production.yml:52-58`; staging omits it, so a blackholed staging database hangs start-up for about two minutes and past the image healthcheck's budget. | `deploy/docker-compose.staging.yml:49` vs `deploy/docker-compose.production.yml:58` | Add the same parameter. |
 | **C12** | **The SQLite fallback promised in `ARCHITECTURE.md` §11.8 cannot work.** §11.8 item 2 offers "an in-memory cache (or SQLite)" as the fallback if PostgreSQL is unavailable, but `repository.py:13` imports `from sqlalchemy.dialects.postgresql import insert as pg_insert` and both `_upsert_article` and `_replace_links` use it unconditionally. | `repository.py:13` | Either correct §11.8 to say PostgreSQL-only, or make the upsert dialect-aware. A documented-but-broken fallback is worse than none. |
 | **C13** | **No `LICENSE` and no root `README.md`.** `CHECKLIST.md` §1.3 records both as deliberately absent. For "other users" this is a hard blocker of a different kind: **without a licence there is no legal permission to use, copy or modify this**, and without a README there is no setup path for a human — `AGENTS.md` §3 is instructions for an agent, and `deploy/README.md` covers deployment only. | verified absent | Add both. The licence decision is a person's to make, not a default to assume. |
@@ -585,7 +612,10 @@ COLUMN IF NOT EXISTS` block in `init.sql`, which fits the existing additive-only
 no-`DROP` rollback property — or state plainly that schema changes require a hand-written
 statement outside the repository.
 
-## D3 — UAT-02's cosmetic half is still open
+## D3 — UAT-02's cosmetic half: what `total_links` counts
+
+**Severity:** Gap · **Status:** **Fixed** 27 September 2026 — resolved by decision, not by
+redefinition. `total_links` keeps its meaning and `total_articles` was added beside it.
 
 `docs/UAT.md` §5 records the blocking half of UAT-02 as fixed and leaves this open:
 `Ghalib` is listed twice, and `summary.total_links` counts both. The project's own evidence
@@ -604,6 +634,42 @@ right while the count does not.
 `UAT.md` §8 records why it was not fixed: changing this changes what `total_links` means,
 which is a contract change for the exact-payload tests in `AGENTS.md` §8. That reasoning is
 correct and the item is assigned to nobody. It needs a decision, not a fix.
+
+**The decision, and what it was decided against.** The three options were: redefine
+`total_links` to count distinct articles; carry both numbers; or leave it and document the
+discrepancy. Redefining was rejected because it throws away a real fact — an author who links
+the same page three times wrote three links — and the exact-payload tests would then have been
+broken for a cosmetic gain. Leaving it was rejected because the tile a user reads would still
+disagree with the list directly beneath it.
+
+So: **`total_links` is unchanged in both name and value** — link targets as written, de-duplicated
+by string before redirects are followed, which is a fact about the article. **`total_articles` is
+new** — the same set after resolution, existing targets keyed by `page_id` and missing targets by
+title, which is a fact about the destination and the number the lists already de-duplicate to.
+`LinkGraph.total_articles` (`services/analysis.py:91-123`) sits beside `total_links` so the two
+definitions are visible in one place rather than inferred from a field name.
+
+The tile now shows `total_articles` and prints `total_links` next to it only when the two differ:
+"440 articles / 444 link targets" is informative, but the same line on a page where they are
+equal reads as a bug.
+
+**A third number was wrong in the same place.** `links_truncated` was already returned and
+already documented on the schema, but nothing told the reader what it meant: when the budget caps
+the crawl, both counts are a *floor* and not a total. That is arguably the more misleading of the
+two, and it is now the tile's hint, in preference to the redundant-count line.
+
+**No schema change.** `analysis_runs` keeps recording the raw figure and no `total_articles`
+column was added, so the two-file invariant in `AGENTS.md` §10 is untouched and no `init.sql`
+change is owed.
+
+**On the tests:** the collision needs a fixture no existing one had — the fake wiki contains no
+redirect at all — so `test_two_spellings_of_one_redirect_count_as_two_links_and_one_article`
+builds the `Ghalib` shape by overriding `get_article_links` and `resolve_titles`. Its first
+version asserted against `Bangaon`/`Bongaon`, which the fake has no page for: both came back
+*missing*, two distinct red links genuinely are two articles, and the test failed for the right
+reason. It now redirects a second spelling onto a page the fixture really has, and
+`test_article_with_no_collisions_reports_both_counts_as_equal` stops that test from passing by
+differing unconditionally. Aliasing `total_articles` to `len(self.order)` fails the first.
 
 ## D4 — Classifier under-detects people heavily
 
@@ -689,19 +755,26 @@ each other and each is small.
 | 8 | Security headers, then TLS | C1, C2 | C1 is a one-block change with no dependencies. C2 is an infrastructure decision. |
 | 9 | Remaining hardening | C3–C13 | Individually small; batch them. |
 | 10 | Fix the documentation drift | D1, D5 | Do it alongside the code changes above, not as a separate pass — `AGENTS.md` §11 requires the same commit. |
-| 11 | Decisions that need a person | A3, D2, D3, D4, C13 | Auth model, schema-change mechanism, what `total_links` counts, the classifier, the licence. None of these is a code fix. |
+| 11 | Decisions that need a person | A3, D2, C13 | Auth model, schema-change mechanism, the licence. None of these is a code fix. **D3** has since been decided — carry both counts rather than redefine one. **D4** is still waiting on its owner. |
 
-**On step 11 specifically:** A3, C13, D2 and D3 each need a decision from a human owner
+**On step 11 specifically:** A3, C13, D2 and D4 each need a decision from a human owner
 before code is written, and `DEFECTS.md` already carries an `Owner: [QA Lead]` placeholder
 that `AGENTS.md` §14 says must not survive once the owner is known. This document does not
-assign owners, because it cannot know them.
+assign owners, because it cannot know them. D3 needed a decision too and no longer does: it
+was one of three options, and it turned out not to require any fact this repository was
+missing.
 
 **Steps 1 to 5 are done.** `704e763` closed the rate limiter (A1, in nginx), the one-way
 false positive (B1), the stale-response race (B3) and the read path (A2); the 27 September
-2026 change closed B6 and, through it, DEF-006. The two findings that move next are B5
-(`session_scope` swallowing a caller's own bug) and C6 (a slow analysis 502s at nginx's
-default 60s read timeout while the backend is still working on it). Both are a few lines,
-and B5 is only provable now that B6 exists.
+2026 change closed B6 and, through it, DEF-006, and the next commit closed B5
+(`session_scope` swallowing a caller's own bug) and C10 (the dev database on every
+interface). **D3** is closed by a decision rather than a fix, and is recorded here because a
+decision is still a change: `total_links` keeps its as-written meaning and a new `total_articles`
+carries the resolved count, so no value was redefined and nothing was lost. What moves next is C6
+and C7 together — a slow analysis 502s at nginx's read
+timeout while the backend is still working on it, and a client who navigates away leaves
+the whole fan-out running. Bounding the analysis clock and cancelling on disconnect would
+close both. After that: B4, then B7, then D5.
 
 ---
 
@@ -721,7 +794,9 @@ Every mechanical claim above can be re-checked from the repository root. Run fro
 | No log rotation configured | `Select-String -Path deploy/*.yml -Pattern 'logging\|max-size\|driver'` — no hits |
 | The write path is untested | Superseded — `backend/tests/test_persistence.py` executes it. Re-check with `Select-String -Path backend/tests/*.py -Pattern 'store_analysis'` |
 | CI compares table names only | Superseded — `ci.yml` now compares columns too, and `test_persistence.py` compares the models against a live database |
-| Baseline suite state | `pytest` (172 passed with `TEST_DATABASE_URL` set, 159 passed + 1 module skipped without it), `npm run test` (30 passed), `npm run lint` (0 errors) |
+| `session_scope` absorbs a caller's bug | Superseded — `db.py` catches `SQLAlchemyError`, not `Exception`. Re-check with `Select-String -Path backend/app/db.py -Pattern 'except'` |
+| Dev database on every interface | Superseded — `database/docker-compose.yml` binds `127.0.0.1:5432:5432`. Re-check with `Select-String -Path database/docker-compose.yml -Pattern '5432:5432'` |
+| Suite state as of this revision | `pytest` (205 passed with `TEST_DATABASE_URL` set, 192 passed + 1 module skipped without it), `npm run test` (47 passed), `npm run lint` (0 errors) |
 
 ---
 
@@ -731,3 +806,6 @@ Every mechanical claim above can be re-checked from the repository root. Run fro
 | ------- | ---- | ------ | ------ | ------ |
 | 1.0 | 27 Sep 2026 | `unassigned` | Open | Initial audit. 29 open findings (4 blockers, 7 bugs, 13 hardening, 5 gaps); 10 areas verified correct. |
 | 1.1 | 27 Sep 2026 | `unassigned` | Open | `704e763` closed **A1** (nginx `limit_req` on the analysis and connection routes), **A4** (retention on `analysis_runs` + `local` log driver with rotation on all three services), **B1** (paginated reverse-link read, and `ONE-WAY` is no longer asserted on an incomplete one), **B2** (`classify_links` now called once on the map route), **B3** (request-identity guard in `AnalysisContext`), **C1** (a `security-headers.conf` include — it has to be an `include`, because `add_header` in a nested location cancels the inherited set), **C3** (`BatchedTitle` bounds each item, not just the list), **C4** (`client_max_body_size 64k`), **C5** (`--forwarded-allow-ips` narrowed to the compose subnets), **C8** (`Retry-After` honoured), **C9** (`ErrorBoundary`), **C11** (`connect_timeout` in the staging `DATABASE_URL`), **D1** (CI compares columns, not table names) and **D2** (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`). **B6** is closed by this revision, and it found **DEF-006**: the read path added in `704e763` never answered, because `_upsert_article` stored the display title while `cached_analysis` searched for the lowercased one. A2 is therefore fixed *now*, not then. **A3, B4, B5, B7, C2, C6, C7, C10, C12, C13, D3, D4 and D5 remain open**, and every body section above still describes the pre-`704e763` tree — treat a section's `Status:` line as the authority and the prose as the original report. |
+| 1.2 | 27 Sep 2026 | `unassigned` | Open | `eb7ca71` closed **A3** in part: an optional `ANALYSIS_API_KEY` gates `POST /api/analyze` and the three `GET /api/connections/*` routes, empty by default, compared with `secrets.compare_digest`, and typed into the SPA rather than baked into the bundle. It is a shared secret and not identity, so `analysis_runs` gains no `api_key_id` and A3 keeps a Major remainder — no request logging, metrics, alerting, or per-subject throttling. The same change fixed two things found on the way: `/api/health` was reading the `settings` local `create_app` closes over instead of the injected `app.state.settings`, and every gated route answered 422 rather than 401 because a `Header()` in an `Annotated` with no default is *required* in Pydantic v2. |
+| 1.3 | 27 Sep 2026 | `unassigned` | Open | Closed **B5** and **C10**. **B5:** `db.session_scope` caught `Exception` around a `try` that wraps the caller's own `yield`, so a `TypeError` in `repository.py` was logged as `"Database write failed"` and the write silently dropped. Narrowed to `SQLAlchemyError`; `ping()` keeps its broad catch deliberately, and the reason is written down. Guarded by `tests/test_db.py` (7 tests, stub session, no database) so the assertion is available in a plain `pytest` run. **C10:** `database/docker-compose.yml` bound `5432:5432` — every interface — with a hardcoded password; now `127.0.0.1:5432:5432` with `${POSTGRES_PASSWORD:-postgres}`. The guard test for this was itself vacuous: its regex required a three-part mapping, so the two-part form it existed to catch was the one form it could not see, and it passed against the exact configuration it was written to prevent. **A3 (remainder), B4, B7, C2, C6, C7, C12, C13, D3, D4 and D5 remain open.** |
+| 1.4 | 27 Sep 2026 | `unassigned` | Open | Closed **D3**, which was the last decision on this list that did not need a new external fact — it needed an owner to choose between redefining `total_links`, carrying both numbers, or documenting the mismatch. Chose the second: `total_links` keeps its as-written value and `total_articles` was added for the resolved count, so the raw figure is not discarded to tidy a tile and the existing field is not silently redefined. The tile shows `total_articles` and prints the raw count only when the two differ, because "440 articles / 444 link targets" is informative while the same line on a page where they are equal reads as a bug. `links_truncated` now also drives the hint: when the budget caps the crawl, both counts are a floor, and that was the more misleading of the two numbers in the same tile. No column was added, so the two-file invariant is untouched. **A3 (remainder), B4, B7, C2, C6, C7, C12, C13, D4 and D5 remain open.** |
