@@ -25,6 +25,30 @@ logger = logging.getLogger(__name__)
 _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
 
+# Managed PostgreSQL providers - Render, Neon, Supabase, RDS, Heroku - all hand out a
+# driverless `postgresql://` URL, and none of them will emit the `+psycopg` that
+# SQLAlchemy needs to reach the one driver this app installs. A Blueprint or a
+# dashboard cannot rewrite a scheme, so the string arrives as-is.
+_DRIVERLESS_SCHEMES = ("postgresql://", "postgres://")
+
+
+def _normalised_url(url: str) -> str:
+    """Pin a driverless PostgreSQL URL to psycopg, leaving an explicit one alone.
+
+    Without this, `create_engine` raises `NoSuchModuleError` looking for psycopg2,
+    and it raises from `init_engine` on the app's lifespan - before uvicorn accepts
+    a connection. The deployment is then down with no route to answer a health
+    check and the reason is a substring of an environment variable.
+
+    A URL that already names a driver is returned untouched, so the compose stacks
+    and `TEST_DATABASE_URL` are unaffected.
+    """
+
+    for scheme in _DRIVERLESS_SCHEMES:
+        if url.startswith(scheme):
+            return f"postgresql+psycopg://{url[len(scheme) :]}"
+    return url
+
 
 def init_engine(settings: Settings) -> None:
     global _engine, _session_factory
@@ -33,7 +57,7 @@ def init_engine(settings: Settings) -> None:
         logger.info("DATABASE_URL is empty, running without persistence")
         return
     _engine = create_engine(
-        settings.database_url,
+        _normalised_url(settings.database_url),
         echo=settings.database_echo,
         pool_pre_ping=True,
     )
