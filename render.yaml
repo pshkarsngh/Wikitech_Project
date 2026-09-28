@@ -1,0 +1,139 @@
+# Render deployment for the FastAPI backend. The frontend is on Vercel and the
+# database is here, so this is one of three pieces rather than the whole stack.
+#
+#   Render dashboard -> New -> Blueprint -> point at this repo
+#
+# The service builds backend/Dockerfile, the same image the compose stacks use.
+# Nothing here is a deployment-only artefact: if this file and
+# deploy/docker-compose.production.yml disagree about a setting, one of them is
+# describing a deployment that no longer exists.
+#
+# One ordering rule that is easy to get wrong: ALLOWED_HOSTS names the Render
+# hostname and CORS_ORIGINS names the Vercel hostname, and the Content-Security-Policy
+# in frontend/vercel.json has to name the *same* Render hostname in connect-src. The
+# backend refuses an unlisted Host with 400, and the browser refuses a connect-src
+# that omits the API origin. Neither failure names the file that caused it, so
+# tests/test_split_deployment_contract.py asserts the three agree.
+
+services:
+  - type: web
+    name: find-missing-api
+    runtime: docker
+    plan: free
+    # Must equal the database's region. Render's private network only resolves
+    # internal hostnames between services in the same region, so a mismatch turns
+    # the internal database URL below into a name that does not resolve, and the
+    # app boots with persistence silently disabled.
+    region: oregon
+    # The service lives in backend/, so the Dockerfile and the build context are
+    # both resolved inside it. Without rootDir Render would look for a Dockerfile
+    # at the repo root and the build would fail on the first COPY.
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    # Render defaults to 30s, then SIGKILLs. One analysis can run for
+    # analysis_deadline_seconds, so a deploy landing on a live request would cut it
+    # at 30s and the reader would get a transport error instead of the partial
+    # result the deadline exists to deliver. uvicorn drains in-flight requests on
+    # SIGTERM, so it only needs the time to be allowed.
+    maxShutdownDelaySeconds: 90
+    envVars:
+      # The Dockerfile CMD binds 8000 explicitly, and Render forwards to $PORT
+      # (default 10000). Without this the container is healthy and unreachable.
+      - key: PORT
+        value: "8000"
+
+      # Host-header allow-list. Render forwards Host as <service-name>.onrender.com,
+      # which is not one of the defaults in app/config.py, so without this every
+      # request is a 400 from TrustedHostMiddleware.
+      - key: ALLOWED_HOSTS
+        value: '["find-missing-api.onrender.com"]'
+
+      # The browser now calls this API cross-origin, so CORS is on the request path
+      # for the first time. It was [] in the compose deployment because nginx served
+      # the SPA and the API from one origin.
+      #
+      # A Vercel *preview* deployment gets its own hostname and will not be in this
+      # list, so previews load the page and fail every request. Add the origin per
+      # preview, or point previews at a second API service, rather than widening
+      # this to "*": the crawl routes are gated by a shared key and a wildcard
+      # origin would make that key the only thing between a stranger and this
+      # deployment's Wikimedia budget.
+      - key: CORS_ORIGINS
+        value: '["https://find-the-missing-connections.vercel.app"]'
+
+      # Wikimedia's API policy asks every client to identify itself with a real
+      # contact address. Change this to yours before going live.
+      - key: USER_AGENT
+        value: "FindTheMissingConnections/0.1 (https://your-domain.example; you@example.com)"
+
+      # Render hands out a bare `postgresql://` URL and its Blueprint cannot rewrite
+      # a scheme, so this arrives without the `+psycopg` that SQLAlchemy needs to
+      # find the installed driver. app/db.py normalises it; see _normalised_url.
+      #
+      # The internal URL is used deliberately: it resolves only on Render's private
+      # network, so the database port is never exposed to the internet, and it skips
+      # the TLS hop. If you move the database to a different region this stops
+      # resolving - switch `property` to `connectionString` (the external URL) and
+      # expect it to be slower and publicly reachable.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: find-missing-db
+          property: internalConnectionString
+
+      # Not in this file. The key is a secret, and a secret in a committed file is
+      # a secret in git history. Render prompts for it on first deploy and stores it
+      # in the service's environment.
+      #
+      # Set it. nginx used to rate-limit /api/analyze to 6r/m and there is no nginx
+      # on Render, so this key is now the only thing stopping an anonymous caller
+      # from spending this deployment's Wikimedia budget.
+      - key: ANALYSIS_API_KEY
+        sync: false
+
+      # Lower than the app default of 100 on purpose. Render publishes no
+      # request-duration ceiling and routes all inbound traffic through Cloudflare,
+      # so the 120s that frontend/nginx-proxy-api.conf allows is not a number this
+      # deployment can rely on. Cloudflare's documented proxy read timeout is 100s,
+      # and finishing at 100 would lose the race the same way nginx at 100 would:
+      # the connection closes as the backend writes, and the partial result and its
+      # `aborted` marker never arrive. 70s leaves room under that.
+      #
+      # If a real article returns a bare 502 or 524 rather than a JSON body, this is
+      # still too high - lower it and redeploy.
+      - key: ANALYSIS_DEADLINE_SECONDS
+        value: "70"
+
+databases:
+  - name: find-missing-db
+    plan: free
+    # Must match the service's region, or the internal URL above does not resolve.
+    region: oregon
+    databaseName: find_missing
+    user: findmissing
+
+    # The free plan is 1 GB and expires 30 days after creation, with a 14-day grace
+    # period and then permanent deletion. There is no `expireTime` key to change and
+    # no warning in the dashboard you will notice in time.
+    #
+    # Expiry is survivable rather than fatal, and that is the point of treating the
+    # database as optional: the app boots with an unreachable DATABASE_URL, reports
+    # database_enabled: false, and still answers every request by crawling Wikipedia
+    # uncached. What you lose is the cache, so analyses get slower and your Wikimedia
+    # usage goes up. To keep the cache, upgrade this to basic-256mb in the dashboard.
+    #
+    # One object does not arrive on its own here. `create_all()` runs on the app's
+    # lifespan and builds the three tables, but the partial index
+    # `ix_article_links_missing` exists only in database/init.sql and is not declared in
+    # app/models.py - a divergence AGENTS.md section 10 records. The compose stacks do
+    # not hit this, because the Postgres image runs init.sql on first volume creation;
+    # Render has no equivalent hook. So apply it once, by hand:
+    #
+    #   render psql connect find-missing-db --stdin < database/init.sql
+    #
+    # That is a performance gap rather than a correctness one - the missing-links query
+    # falls back to scanning article_links. Declaring the index in models.py as a second
+    # Index in the same __table_args__ would make create_all() cover it and remove the
+    # divergence, but that is a change to the two-file invariant and belongs in its own
+    # commit rather than riding along with a deployment.
