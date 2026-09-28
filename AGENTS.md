@@ -27,6 +27,7 @@ backend/
 frontend/
   Dockerfile           release image: vite build, served by nginx
   nginx.conf.template installed as /etc/nginx/templates/default.conf.template
+  vercel.json          the split deployment: SPA rewrite + security headers
   src/
     pages/             HomePage, SearchPage, Analysis, Entities, Missing/OneWay/Map, NotFound
     components/        Layout, SearchBar, ResultLayout, Article*, Connection*, Entity*,
@@ -36,6 +37,7 @@ frontend/
     api/               client.js, apiKey.js  (sessionStorage-backed key store)
   index.html  vite.config.js  vitest.config.js  package.json  .oxlintrc.json  .env.example
 database/              docker-compose.yml, init.sql, README.md
+render.yaml            the split deployment: Render web service + free Postgres
 deploy/
   docker-compose.staging.yml     the Phase 6 staging stack
   docker-compose.production.yml  the Phase 7 production stack, addressed by RELEASE_TAG
@@ -71,6 +73,7 @@ Every command is CWD-sensitive. `backend/.env` uses a relative `env_file`, and
 | any | `python deploy/smoke_test.py --base-url http://localhost:8080 --expect-database` |
 | `deploy` | `docker compose -f docker-compose.production.yml --env-file .env up -d` |
 | `deploy` | `docker compose -f docker-compose.staging.yml down -v` (also drops the volume, so `init.sql` re-runs) |
+| repo root | Render: New → Blueprint → this repo, reads `render.yaml`. Vercel: Root Directory `frontend`, set `VITE_API_BASE_URL`, deploy. |
 
 `pytest` needs a venv built from `requirements.txt`. Without `pytest-asyncio` and
 `httpx2` it does not fail — it aborts with an `INTERNALERROR` and runs **zero** tests,
@@ -165,6 +168,36 @@ These are load-bearing. Breaking one breaks the tests or the deployment.
   deployed request path. The backend's CORS middleware is for the dev server, where the
   frontend is on :5173 and the backend on :8000. `proxy_pass` there must have **no**
   trailing path, or the `/api` prefix is stripped and every route 404s.
+* **The split deployment (Vercel + Render) is the exception to the rule above, and it
+  inverts several others.** It is not a different application, so no invariant in
+  `services/`, `routers/` or `db.py` changes — but four things that nginx was carrying
+  have to exist somewhere else, and each one fails silently when it is missing:
+  * `frontend/vercel.json` carries the security headers nginx used to set, including
+    the CSP. Its `connect-src` **must** name the API origin, where the nginx copy is
+    `'self'` and must stay `'self'` — two topologies, two correct values, so do not
+    "reconcile" them. `backend/tests/test_split_deployment_contract.py` asserts the
+    nginx copy is untouched for exactly that reason.
+  * `VITE_API_BASE_URL` becomes **required and build-time**, because Vite inlines
+    `import.meta.env.*`. The `/api` suffix is part of the value: `client.js`
+    concatenates it with a path that already starts with a slash.
+  * `ALLOWED_HOSTS` must name the deployment's own hostname, or `TrustedHostMiddleware`
+    answers 400 to every route including the platform's health check. The defaults in
+    `config.py` are container names and loopback.
+  * `render.yaml` pins `PORT=8000` to match the image's `--port`, because Render
+    forwards to `$PORT` (default 10000) and a mismatched container is healthy *and*
+    unreachable.
+  Three hostnames have to agree across two files — `ALLOWED_HOSTS`, `CORS_ORIGINS`
+  and the CSP's `connect-src` — and none of the three failure modes names the file
+  that caused it. That cross-check is the test suite's job, not a reviewer's.
+* **`db.py` normalises a driverless `postgresql://` URL to `+psycopg`**, because every
+  managed Postgres provider emits one and Render's Blueprint cannot rewrite a scheme.
+  It has to happen before `create_engine`, which runs on the lifespan: the alternative
+  is `NoSuchModuleError` on a process that never binds a port, with the reason buried
+  in an environment variable.
+* The split deployment has **no rate limiting**. `limit_req zone=analyze` existed to
+  bound this deployment's spend against Wikimedia's 200 req/min, and nothing on
+  Render replaces it — so `ANALYSIS_API_KEY` stops being optional there. It is still
+  optional in the compose stacks, where nginx is doing that job.
 * Schema changes are additive only. There is no migration tool, so a removed or renamed
   column could not be rolled back; `init.sql` is `CREATE ... IF NOT EXISTS` only and
   contains no `DROP`. That is what makes `docs/ROLLBACK.md` §1 true.
